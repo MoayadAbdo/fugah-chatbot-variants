@@ -1,0 +1,20 @@
+{
+  "name": "chatbot-widget",
+  "version": "1.0.0",
+  "description": "",
+  "main": "widget.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite",
+  "build": "vite build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "vite": "^7.2.6"
+  }
+}

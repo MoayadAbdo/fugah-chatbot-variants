@@ -1,0 +1,425 @@
+<!-- ========================================
+     FUGAH CHATBOT WIDGET - HTML TEMPLATE
+     ======================================== -->
+<!-- This file contains the HTML structure for the Fugah chatbot widget
+     including chat bubble, main window, message containers, and footer -->
+
+<!-- ui.html -->
+<!-- Font imports (commented out - fonts loaded via index.html) -->
+<!-- <link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet"> -->
+
+<!-- Arabic font imports (commented out - fonts loaded via index.html) -->
+<!-- <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet"> -->
+
+
+<!-- ========================================
+     CHAT BUBBLE FUNCTIONALITY
+     ======================================== -->
+<!-- Floating chat bubble that opens/closes the main chat window -->
+<div id="chat-bubble">
+  <img
+    id="chat-icon"
+    src="../assets/message-white.png"
+    alt="Chat"
+  />
+</div>
+
+
+<!-- ========================================
+     END CHAT BUBBLE FUNCTIONALITY
+     ======================================== -->
+
+
+<!-- ========================================
+     N8N WEBHOOK INTEGRATION FUNCTIONALITY
+     ======================================== -->
+<!-- Script for fetching response from n8n server (for future integration) -->
+<!-- <script>
+fetch("https://n8n.srv1196634.hstgr.cloud/webhook-test/user", {
+  method: "GET",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ message: "hello" })
+})
+.then(async res => {
+  const text = await res.text();
+  console.log("Status:", res.status);
+  console.log("Body:", text);
+})
+.catch(console.error);
+</script> -->
+
+
+<!-- ========================================
+     END N8N WEBHOOK INTEGRATION FUNCTIONALITY
+     ======================================== -->
+
+
+<!-- ========================================
+     MAIN CHAT WINDOW FUNCTIONALITY
+     ======================================== -->
+<!-- Main chat window container with all chat functionality -->
+<div id="chat-window">
+  <div id="chat-container">
+    <div id="fugah-main-container">
+
+
+      <!-- ========================================
+           HOME CONTAINER FUNCTIONALITY
+           ======================================== -->
+      <!-- Main home screen with welcome message and phone input -->
+      <div id="fugah-main-content" class="main-home-container">
+        <!-- Header with close button -->
+        <div id="chat-header">
+          <button id="close-btn" class="close-button">
+            <img src="../assets/white-exit-button.png" alt="Close" />
+          </button>
+        </div>
+        
+        <!-- Welcome message section -->
+        <div class="fugah-flex-col-end">
+          <h1 class="welcome-title">👋 مرحبا عزيزي العميل</h1>
+          <h1 class="welcome-title">كيف يمكننا مساعدتك</h1>
+        </div>
+        
+        <!-- Phone input and send button section -->
+        <div id="fugah-body">
+          <!-- Phone number input with custom placeholder -->
+          <div class="fugah-number-div">
+            <label for="phone-input">رقم الهاتف</label>
+            <div class="phone-input-wrapper">
+              <!-- Country code dropdown -->
+              <div class="country-code-dropdown-wrapper">
+                <button type="button" class="country-code-dropdown-btn" id="country-code-btn">
+                  <span class="country-code-text" id="country-code-text">+966</span>
+                  <span class="dropdown-arrow">▼</span>
+                </button>
+                <div class="country-code-dropdown" id="country-code-dropdown" style="display: none;">
+                  <div class="country-list" id="country-list">
+                    <!-- Country options will be populated by JavaScript -->
+                  </div>
+                </div>
+              </div>
+              <input type="tel" id="phone-input" placeholder="" />
+              <!-- Custom placeholder with mixed styling -->
+              <div class="custom-placeholder" id="custom-placeholder">
+                <span class="number-format" id="number-format">9665xxxxxxxx</span>
+              </div>
+              <!-- Validation error message -->
+              <div class="phone-validation-error" id="phone-validation-error" style="display: none;"></div>
+            </div>
+          </div>
+          
+          <!-- Main send message button -->
+          <button class="fugah-send-button fugah-flex-between">
+            <img src="../assets/send-icon.png" alt="Send" />
+            <p>أرسل لنا رسالة</p>
+          </button>
+        </div>
+      </div>
+
+
+      <!-- ========================================
+           END HOME CONTAINER FUNCTIONALITY
+           ======================================== -->
+
+
+      <!-- ========================================
+           MESSAGE LIST CONTAINER FUNCTIONALITY
+           ======================================== -->
+      <!-- Message list showing conversation history -->
+      <div class="main-message-container" style="display: none;">
+        <!-- Header with close button and title (same id and class as home – reuses existing CSS) -->
+        <div class="flex-1">
+          <button id="close-btn" class="close-button">
+            <img src="../assets/white-exit-button.png" alt="Close" />
+          </button>
+          <p>تاريخ الدردشة</p>
+        </div>
+        
+        <!-- Message items container -->
+        <div class="message-container">
+          <!-- Empty state message (shown when no messages) -->
+          <div id="no-messages-empty-state" class="no-messages-empty-state" style="display: none;">
+            <p>لا توجد رسائل</p>
+          </div>
+          
+          <!-- First message item -->
+          <div class="message-item" data-message-id="1">
+            <div class="fugah-message-content">
+              <p class="fugah-message-heading">إذا كنت لا تزال بحاجة إلى أي مساعدة۔۔</p>
+              <div class="fugah-message-date-time">
+                <p class="date">19 Nov 2025</p>
+                <p class="time">03:53</p>
+              </div>
+            </div>
+            <img src="../assets/right-arrow.png" alt="message right" />
+          </div>
+          
+          <!-- Second message item -->
+          <div class="message-item" data-message-id="1">
+            <div class="fugah-message-content">
+              <p class="fugah-message-heading">إذا كنت لا تزال بحاجة إلى أي مساعدة۔۔</p>
+              <div class="fugah-message-date-time">
+                <p class="date">19 Nov 2025</p>
+                <p class="time">03:53</p>
+              </div>
+            </div>
+            <img src="../assets/right-arrow.png" alt="message right" />
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ========================================
+           END MESSAGE LIST CONTAINER FUNCTIONALITY
+           ======================================== -->
+
+
+      <!-- ========================================
+           MESSAGE DETAIL CONTAINER FUNCTIONALITY
+           ======================================== -->
+      <!-- Detailed chat view for individual conversations -->
+      <div class="main-message-detail-container" style="display: none;">
+        <!-- Header with back button, title, and dropdown menu -->
+        <div class="chat-rating-header">
+          <img id="message-detail-back-tick-btn" src="../assets/back-tick-black.png" alt="back tick icon" class="message-back-tick-icon" />
+          <img id="message-detail-back-btn" src="../assets/white-exit-button.png" alt="back icon" class="message-back-exit-icon" />
+         
+          <div class="fugah-message-detail-header">
+            <img id="fugah-message-detail-icon" src="../assets/fugah-messsage-icon.png" alt="fugah message icon" />
+            <p>الدردشة</p>
+            <img id="fugah-message-detail-dropdown-icon" src="../assets/fugah-menue-dropdown.png" alt="three dots icon" class="fugah-dropdown-trigger" />
+          </div>
+          
+          <!-- Dropdown menu for chat actions -->
+          <div id="fugah-message-detail-dropdown" class="fugah-message-detail-dropdown" style="display: none;">
+            <!-- Close chat option -->
+            <button class="fugah-dropdown-item" id="close-chat-detail-menu-item">
+              <img src="../assets/fugah-close-icon.png" alt="Close" />
+              <span>إغلاق الدردشة</span>
+            </button>
+            <!-- Create ticket option -->
+            <button class="fugah-dropdown-item" id="create-ticket-detail-menu-item">
+              <img src="../assets/fugah-ticket-icon.png" alt="Ticket" />
+              <span>رفع تذكرة</span>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Chat messages and input section -->
+        <div class="message-detail-chat">
+          <!-- Messages container with demo messages -->
+          <div class="message-detail-messages" id="message-detail-messages">
+            <!-- Demo bot message -->
+            <div class="chat-message chat-message-bot">
+              <div class="chat-message-content">
+                <p>مرحباً! كيف يمكنني مساعدتك اليوم؟</p>
+              </div>
+            </div>
+            
+            <!-- Demo user message -->
+            <div class="chat-message chat-message-user">
+              <div class="chat-message-content">
+                <p>أحتاج إلى مساعدة في طلبي</p>
+              </div>
+            </div>
+            
+            <!-- Demo bot response -->
+            <div class="chat-message chat-message-bot">
+              <div class="chat-message-content">
+                <p>بالطبع، سأكون سعيداً لمساعدتك. ما هو رقم الطلب الخاص بك؟</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Message input container -->
+          <div class="message-detail-input-container">
+            <div class="message-detail-input-wrapper">
+              <!-- Text input for typing messages -->
+              <textarea id="message-detail-input" class="message-detail-input" placeholder="اكتب هنا" rows="1"></textarea>
+              
+              <!-- Actions row: file icon, file preview (same row), send button -->
+              <div class="message-detail-actions-row">
+                <!-- File upload button -->
+                <label for="message-detail-file-input" class="message-detail-file-label">
+                  <img id="file-upload-icon" src="../assets/fugah-file-icon.png" alt="Upload file" />
+                </label>
+                <input type="file" id="message-detail-file-input" class="message-detail-file-input" style="display: none;" />
+                <!-- File preview: shown to the right of file icon when user selects a file (click to open full view) -->
+                <div id="message-detail-file-preview" class="message-detail-file-preview" style="display: none;">
+                  <img id="file-preview-thumb" class="file-preview-thumb" src="" alt="" style="display: none;" />
+                  <span id="file-preview-name" class="file-preview-name"></span>
+                  <button type="button" id="file-preview-remove" class="file-preview-remove" aria-label="Remove file">×</button>
+                </div>
+                <!-- Full preview modal: opens when user clicks the file preview (images, PDF, etc.) -->
+                <div id="file-preview-modal" class="file-preview-modal" style="display: none;" aria-hidden="true">
+                  <div class="file-preview-modal-overlay"></div>
+                  <button type="button" id="file-preview-modal-close-ios" class="file-preview-modal-close-ios" aria-label="Close and go back to chat">×</button>
+                  <div class="file-preview-modal-wrapper">
+                    <div class="file-preview-modal-top-bar">
+                      <button type="button" id="file-preview-modal-close-btn" class="file-preview-modal-close" aria-label="Close and go back to chat">×</button>
+                    </div>
+                    <div class="file-preview-modal-content">
+                      <img id="file-preview-modal-img" class="file-preview-modal-img" src="" alt="Preview" />
+                      <iframe id="file-preview-modal-iframe" class="file-preview-modal-iframe" title="File preview"></iframe>
+                      <div id="file-preview-modal-pdf-wrap" class="file-preview-modal-pdf-wrap" style="display: none;"></div>
+                    </div>
+                  </div>
+                </div>
+                <!-- Send message button --> 
+                <button id="message-detail-send-btn" class="message-detail-send-btn">
+                  <img src="../assets/fugah-send-button.png" alt="Send" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ========================================
+           END MESSAGE DETAIL CONTAINER FUNCTIONALITY
+           ======================================== -->
+
+
+      <!-- ========================================
+           RATING SCREEN CONTAINER FUNCTIONALITY
+           ======================================== -->
+      <!-- Rating screen for ticket creation with emoji rating -->
+      <div class="main-message-detail-container main-rating-container" style="display: none;">
+        <!-- Header with back button, title (same as message detail) -->
+        <div class="chat-rating-header">
+          <!-- <img id="rating-back-tick-btn" src="../assets/back-tick-black.png" alt="back tick icon" class="message-back-tick-icon" /> -->
+          <img id="rating-back-btn" src="../assets/white-exit-button.png" alt="back icon" class="message-back-exit-icon" />
+          <div class="fugah-message-detail-header">
+            <img id="fugah-rating-icon" src="../assets/fugah-messsage-icon.png" alt="fugah message icon" />
+            <p>الدردشة</p>
+            <img id="fugah-rating-dropdown-icon" src="../assets/fugah-menue-dropdown.png" alt="three dots icon" class="fugah-dropdown-trigger" />
+          </div>
+          
+          <!-- Dropdown menu for rating screen -->
+          <div id="fugah-rating-dropdown" class="fugah-message-detail-dropdown" style="display: none;">
+            <!-- Close chat option -->
+            <button class="fugah-dropdown-item" id="close-rating-menu-item">
+              <img src="../assets/fugah-close-icon.png" alt="Close" />
+              <span>إغلاق الدردشة</span>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Chat messages and rating section -->
+        <div class="message-detail-chat">
+          <!-- Messages container (same as message detail) -->
+          <div class="message-detail-messages" id="rating-messages">
+            <!-- Messages will be copied here from message-detail-messages -->
+            
+            <!-- Rating container inside messages (mobile only) -->
+            <div class="chat-message chat-message-rating">
+              <div class="chat-message-content rating-message-content">
+                <!-- Rating title -->
+                <div class="rating-title">
+                  <p>قيم محادثتك</p>
+                </div>
+                
+                <!-- Emoji container with 5 emojis -->
+                <div class="rating-emoji-container">
+                  <img src="../assets/emoji-1.png" alt="Rating 1" class="rating-emoji" data-rating="1" />
+                  <img src="../assets/emoji-2.png" alt="Rating 2" class="rating-emoji" data-rating="2" />
+                  <img src="../assets/emoji-3.png" alt="Rating 3" class="rating-emoji" data-rating="3" />
+                  <img src="../assets/emoji-4.png" alt="Rating 4" class="rating-emoji" data-rating="4" />
+                  <img src="../assets/emoji-5.png" alt="Rating 5" class="rating-emoji" data-rating="5" />
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Rating container (desktop - styled like message-detail-input-container) -->
+          <div class="message-detail-input-container rating-input-container rating-input-container-desktop">
+            <div class="message-detail-input-wrapper rating-emoji-wrapper">
+              <!-- Rating title -->
+              <div class="rating-title">
+                <p>قيم محادثتك</p>
+              </div>
+              
+              <!-- Emoji container with 5 emojis -->
+              <div class="rating-emoji-container">
+                <img src="../assets/emoji-1.png" alt="Rating 1" class="rating-emoji" data-rating="1" />
+                <img src="../assets/emoji-2.png" alt="Rating 2" class="rating-emoji" data-rating="2" />
+                <img src="../assets/emoji-3.png" alt="Rating 3" class="rating-emoji" data-rating="3" />
+                <img src="../assets/emoji-4.png" alt="Rating 4" class="rating-emoji" data-rating="4" />
+                <img src="../assets/emoji-5.png" alt="Rating 5" class="rating-emoji" data-rating="5" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ========================================
+           END RATING SCREEN CONTAINER FUNCTIONALITY
+           ======================================== -->
+
+
+      <!-- ========================================
+           FOOTER FUNCTIONALITY
+           ======================================== -->
+      <!-- Footer with navigation tabs and branding -->
+      <div id="fugah-footer">
+        <!-- Footer navigation tabs -->
+        <div id="fugah-footer-tab">
+          <!-- Message tab -->
+          <div class="fugah-footer-tab-item" data-tab="message">
+            <img src="../assets/inactive-message-footer.png" alt="message inactive" />
+            <p>Message</p>
+          </div>
+          
+          <!-- Home tab (active by default) -->
+          <div class="fugah-footer-tab-item active" data-tab="home">
+            <img src="../assets/active-home-footer.png" alt="home active" />
+            <p>Home</p>
+          </div>
+        </div>
+        
+        <!-- Footer branding with clickable link -->
+        <div id="fugah-footer-end">
+          <a href="https://fuqah.ai/" target="_blank" rel="noopener noreferrer" style="display: flex; align-items: center; gap: 6px; text-decoration: none; color: inherit;">
+            <img id="footer-logo" src="../assets/fugah-footer-end.png" alt="Fugah Logo" />
+            <p> AI مدعوم من فقاعة </p>
+          </a>
+        </div>
+      </div>
+
+
+      <!-- ========================================
+           END FOOTER FUNCTIONALITY
+           ======================================== -->
+
+    </div>
+    
+    <!-- ========================================
+         CUSTOM CONFIRMATION DIALOG
+         ======================================== -->
+    <div id="custom-confirmation-dialog" class="custom-confirmation-dialog" style="display: none;">
+      <div class="confirmation-dialog-overlay"></div>
+      <div class="confirmation-dialog-content">
+        <p class="confirmation-dialog-message" id="confirmation-dialog-message"></p>
+        <div class="confirmation-dialog-buttons">
+          <button class="confirmation-btn confirmation-btn-cancel" id="confirmation-btn-cancel">إلغاء</button>
+          <button class="confirmation-btn confirmation-btn-confirm" id="confirmation-btn-confirm">تأكيد</button>
+        </div>
+      </div>
+    </div>
+    <!-- ========================================
+         END CUSTOM CONFIRMATION DIALOG
+         ======================================== -->
+  </div>
+</div>
+
+
+<!-- ========================================
+     END MAIN CHAT WINDOW FUNCTIONALITY
+     ======================================== -->

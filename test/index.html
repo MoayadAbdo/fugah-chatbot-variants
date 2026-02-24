@@ -1,0 +1,152 @@
+<!-- ========================================
+     FUGAH CHATBOT WIDGET - MAIN HTML PAGE
+     ======================================== -->
+<!-- This is the main HTML page for testing and demonstrating the Fugah chatbot widget
+     It includes theme switching functionality and widget initialization -->
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Chatbot Widget Dev</title>
+  
+  <!-- ========================================
+       GOOGLE FONTS PRECONNECT FUNCTIONALITY
+       ======================================== -->
+  <!-- Preconnect to Google Fonts for better performance -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  
+  <!-- Load Rubik font for proper display across all platforms -->
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
+
+
+  <!-- ========================================
+       END GOOGLE FONTS PRECONNECT FUNCTIONALITY
+       ======================================== -->
+
+
+  <!-- ========================================
+       PAGE STYLING FUNCTIONALITY
+       ======================================== -->
+  <style>
+    /* Main page background with custom image */
+    .fugah-body {
+      background-image: url('assets/main-bg.png');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      height: 100vh;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+    }
+
+    /* Page heading styling */
+    .fugah-body h1 {
+      color: white;
+      margin-bottom: 10px;
+    }
+
+    /* Theme switcher dropdown styling */
+    #fugah-theme-switcher {
+      display: block;          /* Forces new line */
+      margin-bottom: 20px;     /* Spacing below */
+      padding: 6px 10px;
+      font-size: 14px;
+      border-radius: 6px;
+      border: none;
+      outline: none;
+      cursor: pointer;
+    }
+  </style>
+
+
+  <!-- ========================================
+       END PAGE STYLING FUNCTIONALITY
+       ======================================== -->
+
+</head>
+
+<body class="fugah-body">
+
+  <!-- ========================================
+       PAGE CONTENT FUNCTIONALITY
+       ======================================== -->
+  <!-- Main page heading -->
+  <h1>Testing Chatbot Widget...</h1>
+
+  <!-- Theme switcher dropdown for testing different themes -->
+  <select id="fugah-theme-switcher">
+    <option value="green">Green Gradient</option>
+    <option value="red">Red Gradient</option>
+    <option value="blue">Cyan Gradient</option>
+    <option value="yellow" selected>Yellow Gradient</option>
+    <option value="cyan">Blue Gradient</option>
+    <option value="black">Black</option>
+    <option value="white">White</option>
+  </select>
+
+
+  <!-- ========================================
+       END PAGE CONTENT FUNCTIONALITY
+       ======================================== -->
+
+
+  <!-- ========================================
+       WIDGET INITIALIZATION FUNCTIONALITY
+       ======================================== -->
+  <!-- Load the chatbot widget with initial configuration -->
+  <script
+    src="/widget.js"
+    charset="UTF-8"
+    data-store-id="test-store-123"
+    data-theme="yellow">
+  </script>
+
+
+  <!-- ========================================
+       END WIDGET INITIALIZATION FUNCTIONALITY
+       ======================================== -->
+
+
+  <!-- ========================================
+       THEME SWITCHING FUNCTIONALITY
+       ======================================== -->
+  <!-- JavaScript for handling theme switching via dropdown -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const themeSelector = document.getElementById('fugah-theme-switcher');
+      
+      if (themeSelector) {
+        // Set initial value to match data-theme attribute
+        themeSelector.value = 'yellow';
+        
+        // Handle theme change events
+        themeSelector.addEventListener('change', function() {
+          const selectedTheme = this.value;
+          console.log('Theme selector changed to:', selectedTheme);
+          
+          // Call the global theme change function if it exists
+          if (typeof window.changeChatbotTheme === 'function') {
+            window.changeChatbotTheme(selectedTheme);
+          } else {
+            // If function not ready yet, wait a bit and try again
+            setTimeout(() => {
+              if (typeof window.changeChatbotTheme === 'function') {
+                window.changeChatbotTheme(selectedTheme);
+              }
+            }, 1000);
+          }
+        });
+      }
+    });
+  </script>
+
+
+  <!-- ========================================
+       END THEME SWITCHING FUNCTIONALITY
+       ======================================== -->
+
+</body>
+</html>
