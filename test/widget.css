@@ -2813,6 +2813,54 @@ body.chat-open * {
   .file-preview-modal-close-ios:hover {
     background-color: rgba(0, 0, 0, 0.95) !important;
   }
+  /* iOS-only: PDF/Excel page navigation - fixed to bottom, always visible */
+  .file-preview-pdf-nav,
+  .file-preview-excel-nav {
+    position: fixed !important;
+    bottom: max(20px, env(safe-area-inset-bottom)) !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: auto !important;
+    min-width: 180px !important;
+    padding: 12px 20px !important;
+    background: rgba(0, 0, 0, 0.85) !important;
+    border-radius: 30px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+    z-index: 10002 !important;
+    -webkit-transform: translateX(-50%) translateZ(0) !important;
+  }
+  .file-preview-pdf-nav-btn,
+  .file-preview-excel-nav-btn {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    border: none !important;
+    border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.2) !important;
+    color: #fff !important;
+    font-size: 26px !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    -webkit-tap-highlight-color: transparent !important;
+    touch-action: manipulation !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+  }
+  .file-preview-pdf-nav-btn:hover,
+  .file-preview-excel-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.35) !important;
+  }
+  .file-preview-pdf-nav-label,
+  .file-preview-excel-nav-label {
+    color: #fff !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+  }
   @media screen and (max-width: 767px) {
     .file-preview-modal-wrapper {
       min-height: -webkit-fill-available;
