@@ -2821,7 +2821,7 @@
         pdfViewerCurrentPage = 1;
         filePreviewModal.style.display = "flex";
         filePreviewModal.setAttribute("aria-hidden", "false");
-        // addFilePreviewCloseToBody(); // Disabled - using buttons inside modal instead
+        hideHeaderFooterForPreview(); // Hide header/footer when preview modal is open
 
         var wrap = filePreviewModalPdfWrap;
         function doRender() {
@@ -2897,7 +2897,7 @@
         filePreviewModalPdfWrap.innerHTML = "";
         filePreviewModal.style.display = "flex";
         filePreviewModal.setAttribute("aria-hidden", "false");
-        // addFilePreviewCloseToBody(); // Disabled - using buttons inside modal instead
+        hideHeaderFooterForPreview(); // Hide header/footer when preview modal is open
 
         var wrap = filePreviewModalPdfWrap;
         
@@ -2950,7 +2950,7 @@
         filePreviewModalPdfWrap.innerHTML = "";
         filePreviewModal.style.display = "flex";
         filePreviewModal.setAttribute("aria-hidden", "false");
-        // addFilePreviewCloseToBody(); // Disabled - using buttons inside modal instead
+        hideHeaderFooterForPreview(); // Hide header/footer when preview modal is open
 
         var wrap = filePreviewModalPdfWrap;
         var excelCurrentSheet = 0;
@@ -3089,7 +3089,7 @@
           filePreviewModalImg.style.display = "block";
           filePreviewModalImg.src = filePreviewThumb.src;
           filePreviewModalImg.alt = file.name;
-        // addFilePreviewCloseToBody(); // Disabled - using buttons inside modal instead
+        hideHeaderFooterForPreview(); // Hide header/footer when preview modal is open
         } else if (isPdf) {
           filePreviewModalBlobUrl = URL.createObjectURL(file);
           showPdfFitToScreen(filePreviewModalBlobUrl);
@@ -3111,7 +3111,7 @@
 
         filePreviewModal.style.display = "flex";
         filePreviewModal.setAttribute("aria-hidden", "false");
-        // addFilePreviewCloseToBody(); // Disabled - using buttons inside modal instead
+        hideHeaderFooterForPreview(); // Hide header/footer when preview modal is open
       }
 
       var filePreviewCloseBodyEl = null;
@@ -3313,7 +3313,7 @@
         filePreviewModalImg.alt = "Preview";
         filePreviewModal.style.display = "flex";
         filePreviewModal.setAttribute("aria-hidden", "false");
-        // addFilePreviewCloseToBody(); // Disabled - using buttons inside modal instead
+        hideHeaderFooterForPreview(); // Hide header/footer when preview modal is open
       }
 
       // Open modal with blob URL for PDF, Word, Excel (from chat) - fit to screen
