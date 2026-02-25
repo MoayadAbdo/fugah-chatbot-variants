@@ -615,7 +615,7 @@ body.chat-open * {
     right: 20px;
     bottom: 20px;
     background-size: cover !important;
-    background-position: center top !important;
+    background-position: center !important;
     background-repeat: no-repeat !important;
   }
   
@@ -3199,7 +3199,7 @@ body.chat-open * {
 .theme-green#chat-window {
   background-image: url(/assets/chatbot-green-bg.png) !important;
   background-size: cover !important;
-  background-position: center top !important;
+  background-position: center !important;
   background-repeat: no-repeat !important;
 }
 
@@ -3242,7 +3242,7 @@ body.chat-open * {
 .theme-red#chat-window {
   background-image: url(/assets/chatbot-red-bg.png) !important;
   background-size: cover !important;
-  background-position: center top !important;
+  background-position: center !important;
   background-repeat: no-repeat !important;
 }
 
@@ -3284,7 +3284,7 @@ body.chat-open * {
 .theme-blue#chat-window {
   background-image: url(/assets/chatbot-cyan-bg.png) !important;
   background-size: cover !important;
-  background-position: center top !important;
+  background-position: center !important;
   background-repeat: no-repeat !important;
 }
 
@@ -3333,20 +3333,105 @@ body.chat-open * {
 .theme-yellow#chat-window {
   background-image: url(/assets/chatbot-yellow-bg.png) !important;
   background-size: cover !important;
-  background-position: center top !important;
+  background-position: center !important;
   background-repeat: no-repeat !important;
   border-radius: 20px !important;
   overflow: hidden !important;
   box-shadow: 0 8px 32px rgba(0,0,0,0.15) !important;
 }
 
-/* Yellow Theme - Use mobile background when chat window is open (mobile only) */
+/* ========================================
+   iOS SAFARI BACKGROUND IMAGE FIX FOR ALL THEMES
+   ======================================== */
+/* iOS Safari has issues rendering background-size: cover on fixed/positioned elements.
+   These fixes force GPU acceleration and ensure proper background rendering on iOS. */
 @media screen and (max-width: 767px) {
+  /* Base iOS fix for all themes when chat window is open */
+  #chat-window.chat-window-open {
+    -webkit-transform: translateZ(0) !important;
+    transform: translateZ(0) !important;
+    -webkit-backface-visibility: hidden !important;
+    backface-visibility: hidden !important;
+    -webkit-perspective: 1000 !important;
+    perspective: 1000 !important;
+    will-change: transform !important;
+    background-attachment: scroll !important;
+  }
+  
+  /* Green Theme - Mobile background with iOS fix */
+  .theme-green#chat-window.chat-window-open {
+    background-image: url(/assets/chatbot-green-mobile-bg.png) !important;
+    background-size: cover !important;
+    -webkit-background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-attachment: scroll !important;
+    border-radius: 0 !important;
+  }
+  
+  /* Red Theme - Mobile background with iOS fix */
+  .theme-red#chat-window.chat-window-open {
+    background-image: url(/assets/chatbot-red-mobile-bg.png) !important;
+    background-size: cover !important;
+    -webkit-background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-attachment: scroll !important;
+    border-radius: 0 !important;
+  }
+  
+  /* Blue Theme - Mobile background with iOS fix (uses cyan-mobile-bg) */
+  .theme-blue#chat-window.chat-window-open {
+    background-image: url(/assets/chatbot-cyan-mobile-bg.png) !important;
+    background-size: cover !important;
+    -webkit-background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-attachment: scroll !important;
+    border-radius: 0 !important;
+  }
+  
+  /* Yellow Theme - Mobile background with iOS fix */
   .theme-yellow#chat-window.chat-window-open {
     background-image: url(/assets/chatbot-yellow-mobile-bg.png) !important;
     background-size: cover !important;
-    background-position: center top !important;
+    -webkit-background-size: cover !important;
+    background-position: center !important;
     background-repeat: no-repeat !important;
+    background-attachment: scroll !important;
+    border-radius: 0 !important;
+  }
+  
+  /* Cyan Theme - Mobile background with iOS fix (uses blue-mobile-bg) */
+  .theme-cyan#chat-window.chat-window-open {
+    background-image: url(/assets/chatbot-blue-mobile-bg.png) !important;
+    background-size: cover !important;
+    -webkit-background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-attachment: scroll !important;
+    border-radius: 0 !important;
+  }
+  
+  /* Black Theme - Mobile background with iOS fix */
+  .theme-black#chat-window.chat-window-open {
+    background-image: url(/assets/chatbot-black-mobile-bg.png) !important;
+    background-size: cover !important;
+    -webkit-background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-attachment: scroll !important;
+    border-radius: 0 !important;
+  }
+  
+  /* White Theme - Mobile background with iOS fix (uses black-mobile-bg) */
+  .theme-white#chat-window.chat-window-open {
+    background-image: url(/assets/chatbot-black-mobile-bg.png) !important;
+    background-size: cover !important;
+    -webkit-background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-attachment: scroll !important;
     border-radius: 0 !important;
   }
   
@@ -3556,7 +3641,7 @@ body.chat-open * {
 .theme-cyan#chat-window {
   background-image: url(/assets/chatbot-blue-bg.png) !important;
   background-size: cover !important;
-  background-position: center top !important;
+  background-position: center !important;
   background-repeat: no-repeat !important;
 }
 
@@ -3807,7 +3892,7 @@ body.chat-open * {
 .theme-white#chat-window {
   background-image: url(/assets/chatbot-white-bg.png) !important;
   background-size: cover !important;
-  background-position: center top !important;
+  background-position: center !important;
   background-repeat: no-repeat !important;
   color: #222 !important;
 }
