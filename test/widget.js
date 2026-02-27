@@ -2363,8 +2363,21 @@
           img.src = filePreviewUrl;
           img.alt = "Image";
           img.loading = "lazy";
+          if (fileName) img.setAttribute("data-file-name", fileName);
           imgWrap.appendChild(img);
           contentDiv.appendChild(imgWrap);
+        } else if (filePreviewUrl && fileType === "video") {
+          const videoWrap = document.createElement("div");
+          videoWrap.className = "chat-message-video-wrap";
+          const video = document.createElement("video");
+          video.className = "chat-message-video";
+          video.src = filePreviewUrl;
+          video.setAttribute("preload", "metadata");
+          video.setAttribute("playsinline", "");
+          video.muted = true;
+          if (fileName) video.setAttribute("data-file-name", fileName);
+          videoWrap.appendChild(video);
+          contentDiv.appendChild(videoWrap);
         } else if (filePreviewUrl && (fileType === "pdf" || fileType === "word" || fileType === "excel" || fileType === "other")) {
           const fileCard = document.createElement("div");
           fileCard.className = "chat-message-file";
@@ -2574,6 +2587,7 @@
         const message = messageDetailInput.value.trim();
         const file = messageDetailFileInput && messageDetailFileInput.files && messageDetailFileInput.files[0];
         const hasImage = file && file.type && file.type.startsWith("image/");
+        const hasVideo = file && file.type && file.type.startsWith("video/");
         
         if (!message && !file) return;
         
@@ -2592,6 +2606,17 @@
             }, 1500);
           };
           reader.readAsDataURL(file);
+        } else if (hasVideo) {
+          const blobUrl = URL.createObjectURL(file);
+          addDetailMessageWithFile(message || file.name, blobUrl, "video", file.name, true, false);
+          messageDetailInput.value = "";
+          if (typeof hideFilePreview === "function") hideFilePreview();
+          autoResizeTextarea();
+          toggleMessageDetailSendButtonState();
+          showLoadingIndicator();
+          setTimeout(() => {
+            addDetailMessageWithFile("شكراً لك! تم استلام الفيديو.", blobUrl, "video", file.name, false, true);
+          }, 1500);
         } else if (file) {
           const isPdf = file.type === "application/pdf";
           const isWord = file.type === "application/msword" || 
@@ -2669,6 +2694,7 @@
         filePreviewName.textContent = file.name;
         if (filePreviewThumb) {
           const isImage = file.type && file.type.startsWith("image/");
+          const isVideo = file.type && file.type.startsWith("video/");
           if (isImage) {
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -2677,6 +2703,31 @@
               filePreviewThumb.style.display = "block";
             };
             reader.readAsDataURL(file);
+          } else if (isVideo) {
+            const videoUrl = URL.createObjectURL(file);
+            const tempVideo = document.createElement("video");
+            tempVideo.muted = true;
+            tempVideo.preload = "metadata";
+            tempVideo.onloadeddata = function() {
+              tempVideo.currentTime = 0.1;
+            };
+            tempVideo.onseeked = function() {
+              const canvas = document.createElement("canvas");
+              canvas.width = tempVideo.videoWidth || 120;
+              canvas.height = tempVideo.videoHeight || 90;
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(tempVideo, 0, 0, canvas.width, canvas.height);
+              filePreviewThumb.src = canvas.toDataURL("image/png");
+              filePreviewThumb.alt = file.name;
+              filePreviewThumb.style.display = "block";
+              URL.revokeObjectURL(videoUrl);
+            };
+            tempVideo.onerror = function() {
+              filePreviewThumb.style.display = "none";
+              filePreviewThumb.src = "";
+              URL.revokeObjectURL(videoUrl);
+            };
+            tempVideo.src = videoUrl;
           } else {
             filePreviewThumb.style.display = "none";
             filePreviewThumb.src = "";
@@ -2728,6 +2779,8 @@
       }
 
       let filePreviewModalBlobUrl = null;
+      let currentPreviewUrl = null; // Track current preview URL for download
+      let currentPreviewFileName = null; // Track current preview file name for download
       let pdfViewerPdfDoc = null;
       let pdfViewerNumPages = 0;
       let pdfViewerCurrentPage = 1;
@@ -3065,6 +3118,7 @@
         if (!filePreviewModal) return;
 
         const isImage = file.type && file.type.startsWith("image/");
+        const isVideo = file.type && file.type.startsWith("video/");
         const isPdf = file.type === "application/pdf";
         const isWord = file.type === "application/msword" || 
                        file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
@@ -3080,6 +3134,14 @@
           filePreviewModalBlobUrl = null;
         }
 
+        // Hide video element first
+        var videoEl = filePreviewModal.querySelector("#file-preview-modal-video");
+        if (videoEl) {
+          videoEl.pause();
+          videoEl.src = "";
+          videoEl.style.display = "none";
+        }
+
         if (isImage && filePreviewModalImg && filePreviewThumb && filePreviewThumb.src) {
           if (filePreviewModalIframe) {
             filePreviewModalIframe.style.display = "none";
@@ -3089,17 +3151,58 @@
           filePreviewModalImg.style.display = "block";
           filePreviewModalImg.src = filePreviewThumb.src;
           filePreviewModalImg.alt = file.name;
-        hideHeaderFooterForPreview(); // Hide header/footer when preview modal is open
+          currentPreviewUrl = filePreviewThumb.src;
+          currentPreviewFileName = file.name;
+          hideHeaderFooterForPreview();
+        } else if (isVideo) {
+          filePreviewModalBlobUrl = URL.createObjectURL(file);
+          if (filePreviewModalImg) {
+            filePreviewModalImg.style.display = "none";
+            filePreviewModalImg.src = "";
+          }
+          if (filePreviewModalIframe) {
+            filePreviewModalIframe.style.display = "none";
+            filePreviewModalIframe.src = "";
+          }
+          if (filePreviewModalPdfWrap) filePreviewModalPdfWrap.style.display = "none";
+          
+          // Create or get video element
+          if (!videoEl) {
+            videoEl = document.createElement("video");
+            videoEl.id = "file-preview-modal-video";
+            videoEl.className = "file-preview-modal-video";
+            videoEl.setAttribute("controls", "");
+            videoEl.setAttribute("playsinline", "");
+            videoEl.style.cssText = "max-width: 100%; max-height: 80vh; width: auto; height: auto; object-fit: contain; border-radius: 8px;";
+            var modalContent = filePreviewModal.querySelector(".file-preview-modal-content");
+            if (modalContent) {
+              modalContent.appendChild(videoEl);
+            }
+          }
+          videoEl.src = filePreviewModalBlobUrl;
+          videoEl.style.display = "block";
+          currentPreviewUrl = filePreviewModalBlobUrl;
+          currentPreviewFileName = file.name;
+          filePreviewModal.style.display = "flex";
+          filePreviewModal.setAttribute("aria-hidden", "false");
+          hideHeaderFooterForPreview();
+          return;
         } else if (isPdf) {
           filePreviewModalBlobUrl = URL.createObjectURL(file);
+          currentPreviewUrl = filePreviewModalBlobUrl;
+          currentPreviewFileName = file.name;
           showPdfFitToScreen(filePreviewModalBlobUrl);
           return;
         } else if (isWord) {
           filePreviewModalBlobUrl = URL.createObjectURL(file);
+          currentPreviewUrl = filePreviewModalBlobUrl;
+          currentPreviewFileName = file.name;
           showWordFitToScreen(filePreviewModalBlobUrl);
           return;
         } else if (isExcel) {
           filePreviewModalBlobUrl = URL.createObjectURL(file);
+          currentPreviewUrl = filePreviewModalBlobUrl;
+          currentPreviewFileName = file.name;
           showExcelFitToScreen(filePreviewModalBlobUrl);
           return;
         } else {
@@ -3111,7 +3214,7 @@
 
         filePreviewModal.style.display = "flex";
         filePreviewModal.setAttribute("aria-hidden", "false");
-        hideHeaderFooterForPreview(); // Hide header/footer when preview modal is open
+        hideHeaderFooterForPreview();
       }
 
       var filePreviewCloseBodyEl = null;
@@ -3189,6 +3292,13 @@
           filePreviewModalImg.src = "";
           filePreviewModalImg.style.display = "block";
         }
+        // Pause and reset video
+        var videoEl = filePreviewModal.querySelector("#file-preview-modal-video");
+        if (videoEl) {
+          videoEl.pause();
+          videoEl.src = "";
+          videoEl.style.display = "none";
+        }
         if (filePreviewModalIframe) {
           filePreviewModalIframe.src = "";
           filePreviewModalIframe.style.display = "none";
@@ -3202,6 +3312,9 @@
           URL.revokeObjectURL(filePreviewModalBlobUrl);
           filePreviewModalBlobUrl = null;
         }
+        // Clear current preview tracking
+        currentPreviewUrl = null;
+        currentPreviewFileName = null;
       }
 
       if (filePreviewContainer) {
@@ -3245,29 +3358,55 @@
         }, { passive: false });
       }
       
-      // Download button in preview modal - triggers file input to upload a new file
+      // Download the current preview file
+      function downloadCurrentPreview() {
+        if (!currentPreviewUrl) return;
+        
+        // For blob URLs or same-origin URLs, we can fetch and download
+        fetch(currentPreviewUrl)
+          .then(function(response) {
+            if (!response.ok) throw new Error("Network response was not ok");
+            return response.blob();
+          })
+          .then(function(blob) {
+            var downloadUrl = URL.createObjectURL(blob);
+            var a = document.createElement("a");
+            a.href = downloadUrl;
+            a.download = currentPreviewFileName || "download";
+            a.style.display = "none";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(downloadUrl);
+          })
+          .catch(function(err) {
+            // Fallback: try opening in new tab
+            console.warn("Download failed, opening in new tab:", err);
+            var a = document.createElement("a");
+            a.href = currentPreviewUrl;
+            a.download = currentPreviewFileName || "download";
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.style.display = "none";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          });
+      }
+      
+      // Download button in preview modal - downloads the current file
       if (filePreviewModalDownload) {
         filePreviewModalDownload.addEventListener("click", function (e) {
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
-          // Close the preview modal first
-          closeFilePreviewModal();
-          // Trigger file input click to upload new file
-          if (messageDetailFileInput) {
-            messageDetailFileInput.click();
-          }
+          downloadCurrentPreview();
         });
         filePreviewModalDownload.addEventListener("touchend", function (e) {
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
-          // Close the preview modal first
-          closeFilePreviewModal();
-          // Trigger file input click to upload new file
-          if (messageDetailFileInput) {
-            messageDetailFileInput.click();
-          }
+          downloadCurrentPreview();
         }, { passive: false });
         filePreviewModalDownload.addEventListener("touchstart", function (e) {
           e.stopPropagation();
@@ -3297,11 +3436,18 @@
       }
 
       // Click on image in chat to open full preview
-      function openModalWithImageSrc(src) {
+      function openModalWithImageSrc(src, fileName) {
         if (!filePreviewModal || !filePreviewModalImg) return;
         if (filePreviewModalBlobUrl) {
           URL.revokeObjectURL(filePreviewModalBlobUrl);
           filePreviewModalBlobUrl = null;
+        }
+        // Hide video element if present
+        var videoEl = filePreviewModal.querySelector("#file-preview-modal-video");
+        if (videoEl) {
+          videoEl.pause();
+          videoEl.src = "";
+          videoEl.style.display = "none";
         }
         if (filePreviewModalIframe) {
           filePreviewModalIframe.src = "";
@@ -3313,16 +3459,79 @@
         filePreviewModalImg.alt = "Preview";
         filePreviewModal.style.display = "flex";
         filePreviewModal.setAttribute("aria-hidden", "false");
+        // Track current preview for download
+        currentPreviewUrl = src;
+        currentPreviewFileName = fileName || extractFileNameFromUrl(src);
         hideHeaderFooterForPreview(); // Hide header/footer when preview modal is open
       }
-
-      // Open modal with blob URL for PDF, Word, Excel (from chat) - fit to screen
-      function openModalWithBlobUrl(blobUrl, fileType) {
+      
+      // Extract file name from URL
+      function extractFileNameFromUrl(url) {
+        if (!url) return "download";
+        try {
+          var urlObj = new URL(url, window.location.origin);
+          var pathname = urlObj.pathname;
+          var parts = pathname.split("/");
+          var name = parts[parts.length - 1];
+          return name && name.length > 0 ? decodeURIComponent(name) : "download";
+        } catch (e) {
+          return "download";
+        }
+      }
+      
+      // Open modal with video
+      function openModalWithVideo(src, fileName) {
         if (!filePreviewModal) return;
         if (filePreviewModalBlobUrl) {
           URL.revokeObjectURL(filePreviewModalBlobUrl);
           filePreviewModalBlobUrl = null;
         }
+        // Hide image
+        if (filePreviewModalImg) {
+          filePreviewModalImg.style.display = "none";
+          filePreviewModalImg.src = "";
+        }
+        if (filePreviewModalIframe) {
+          filePreviewModalIframe.src = "";
+          filePreviewModalIframe.style.display = "none";
+        }
+        if (filePreviewModalPdfWrap) filePreviewModalPdfWrap.style.display = "none";
+        
+        // Create or get video element
+        var videoEl = filePreviewModal.querySelector("#file-preview-modal-video");
+        if (!videoEl) {
+          videoEl = document.createElement("video");
+          videoEl.id = "file-preview-modal-video";
+          videoEl.className = "file-preview-modal-video";
+          videoEl.setAttribute("controls", "");
+          videoEl.setAttribute("playsinline", "");
+          videoEl.style.cssText = "max-width: 100%; max-height: 80vh; width: auto; height: auto; object-fit: contain; border-radius: 8px;";
+          var modalContent = filePreviewModal.querySelector(".file-preview-modal-content");
+          if (modalContent) {
+            modalContent.appendChild(videoEl);
+          }
+        }
+        videoEl.src = src;
+        videoEl.style.display = "block";
+        
+        filePreviewModal.style.display = "flex";
+        filePreviewModal.setAttribute("aria-hidden", "false");
+        // Track current preview for download
+        currentPreviewUrl = src;
+        currentPreviewFileName = fileName || extractFileNameFromUrl(src);
+        hideHeaderFooterForPreview();
+      }
+
+      // Open modal with blob URL for PDF, Word, Excel (from chat) - fit to screen
+      function openModalWithBlobUrl(blobUrl, fileType, fileName) {
+        if (!filePreviewModal) return;
+        if (filePreviewModalBlobUrl) {
+          URL.revokeObjectURL(filePreviewModalBlobUrl);
+          filePreviewModalBlobUrl = null;
+        }
+        // Track current preview for download
+        currentPreviewUrl = blobUrl;
+        currentPreviewFileName = fileName || extractFileNameFromUrl(blobUrl);
         if (fileType === "pdf") {
           showPdfFitToScreen(blobUrl);
           return;
@@ -3345,7 +3554,16 @@
           if (img && img.src) {
             e.preventDefault();
             e.stopPropagation();
-            openModalWithImageSrc(img.src);
+            var imgFileName = img.getAttribute("data-file-name") || null;
+            openModalWithImageSrc(img.src, imgFileName);
+            return;
+          }
+          const video = e.target.closest(".chat-message-video");
+          if (video && video.src) {
+            e.preventDefault();
+            e.stopPropagation();
+            var videoFileName = video.getAttribute("data-file-name") || null;
+            openModalWithVideo(video.src, videoFileName);
             return;
           }
           const fileCard = e.target.closest(".chat-message-file");
@@ -3354,12 +3572,15 @@
             e.stopPropagation();
             const url = fileCard.getAttribute("data-preview-url");
             const type = fileCard.getAttribute("data-file-type");
+            const fileName = fileCard.getAttribute("data-file-name") || null;
             if (url && type === "pdf") {
-              openModalWithBlobUrl(url, "pdf");
+              openModalWithBlobUrl(url, "pdf", fileName);
             } else if (url && type === "word") {
-              openModalWithBlobUrl(url, "word");
+              openModalWithBlobUrl(url, "word", fileName);
             } else if (url && type === "excel") {
-              openModalWithBlobUrl(url, "excel");
+              openModalWithBlobUrl(url, "excel", fileName);
+            } else if (url && type === "video") {
+              openModalWithVideo(url, fileName);
             } else if (url && type === "other") {
               window.open(url, "_blank");
             }
@@ -3368,8 +3589,9 @@
         messageDetailMessages.addEventListener("click", handlePreviewClick);
         messageDetailMessages.addEventListener("touchstart", function (e) {
           const img = e.target.closest(".chat-message-img");
+          const video = e.target.closest(".chat-message-video");
           const fileCard = e.target.closest(".chat-message-file");
-          if ((img && img.src) || fileCard) {
+          if ((img && img.src) || (video && video.src) || fileCard) {
             e.preventDefault();
             handlePreviewClick(e);
           }

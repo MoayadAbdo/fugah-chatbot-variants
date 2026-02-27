@@ -1981,6 +1981,28 @@ body.chat-open * {
   vertical-align: bottom;
 }
 
+/* Video wrapper in chat message */
+.chat-message-video-wrap {
+  margin-bottom: 6px;
+  overflow: hidden;
+  max-width: 100%;
+  border-radius: 8px;
+  position: relative;
+}
+
+/* Video in chat – click to open full preview with controls */
+.chat-message-video {
+  display: block;
+  max-width: 220px;
+  max-height: 220px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #000;
+}
+
 /* File card in chat (PDF, DOC, etc.) – click to open preview or new tab */
 .chat-message-file {
   display: inline-flex;
@@ -2517,6 +2539,20 @@ body.chat-open * {
   pointer-events: auto;
 }
 
+/* Modal video: similar styling to image */
+.file-preview-modal-video {
+  max-width: 100%;
+  max-height: 80vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  display: none;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  background: #000;
+}
+
 /* Iframe: fill content box (fallback when PDF.js not used) */
 .file-preview-modal-iframe {
   display: none;
@@ -2830,6 +2866,17 @@ body.chat-open * {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+  }
+
+  .file-preview-modal-video {
+    max-width: 100%;
+    max-height: 70vh;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 8px;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
   }
 
   .file-preview-modal-iframe {
