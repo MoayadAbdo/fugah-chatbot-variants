@@ -9,6 +9,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "vite",
+    "prebuild": "node scripts/copy-widget-to-public.js",
     "build": "node node_modules/vite/bin/vite.js build"
   },
   "engines": {
