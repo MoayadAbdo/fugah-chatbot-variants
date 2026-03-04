@@ -70,10 +70,13 @@
   // ========================================
   // HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
   // ========================================
-  // Load HTML template and initialize all DOM elements
-  fetch(WIDGET_BASE ? WIDGET_BASE + "ui.html" : "ui.html") // Load HTML template
-        .then(res => res.text())
-        .then(html => {
+  // Build replaces __UI_HTML_INLINED__ with inlined ui.html (snippet/CDN: no second request)
+  Promise.resolve("__UI_HTML_INLINED__").then(html => {
+      if (html === "__UI_HTML_INLINED__") {
+        return fetch(WIDGET_BASE ? WIDGET_BASE + "ui.html" : "ui.html").then(r => r.text());
+      }
+      return html;
+    }).then(html => {
       shadow.innerHTML += html; // Inject HTML into shadow DOM
 
       // Select all required DOM elements from shadow DOM

@@ -10,15 +10,17 @@ fs.copyFileSync(path.join(testDir, "widget.css"), path.join(publicDir, "widget.c
 fs.copyFileSync(path.join(testDir, "ui.html"), path.join(publicDir, "ui.html"));
 fs.cpSync(path.join(testDir, "assets"), path.join(publicDir, "assets"), { recursive: true });
 
-// Inline ui.html into widget.js so the widget doesn't need a second request (avoids ERR_CONNECTION_RESET on Salla)
+// Inline ui.html into widget.js so the widget doesn't need a second request (snippet/CDN: no ui.html fetch)
 const uiHtml = fs.readFileSync(path.join(testDir, "ui.html"), "utf8");
 const inlined = JSON.stringify(uiHtml);
 let widgetJs = fs.readFileSync(path.join(publicDir, "widget.js"), "utf8");
-const fetchPattern = /fetch\s*\(\s*WIDGET_BASE\s*\?\s*WIDGET_BASE\s*\+\s*"ui\.html"\s*:\s*"ui\.html"\s*\)\s*\/\/ Load HTML template\s*\.then\s*\(\s*res\s*=>\s*res\.text\s*\(\s*\)\s*\)\s*\.then\s*\(\s*html\s*=>\s*\{/;
-if (!fetchPattern.test(widgetJs)) {
-  throw new Error("copy-widget-to-public: could not find fetch block in widget.js");
+// Replace placeholder + dev fallback with just the inlined HTML (single-file snippet)
+const placeholderBlock = /Promise\.resolve\s*\(\s*"__UI_HTML_INLINED__"\s*\)\s*\.then\s*\(\s*html\s*=>\s*\{\s*if\s*\(\s*html\s*===\s*"__UI_HTML_INLINED__"\s*\)\s*\{\s*return\s+fetch\s*\([^)]+\)\.then\s*\(\s*r\s*=>\s*r\.text\s*\(\s*\)\s*\)\s*;\s*\}\s*return\s+html\s*;\s*\}\s*\)\s*\.then\s*\(\s*html\s*=>\s*\{/;
+if (!placeholderBlock.test(widgetJs)) {
+  throw new Error("copy-widget-to-public: could not find __UI_HTML_INLINED__ block in widget.js");
 }
-widgetJs = widgetJs.replace(fetchPattern, "Promise.resolve(" + inlined + ").then(html => {");
+widgetJs = widgetJs.replace(placeholderBlock, "Promise.resolve(" + inlined + ").then(html => {");
+widgetJs = "// Fugah widget snippet build (ui inlined, no ui.html fetch)\n" + widgetJs;
 fs.writeFileSync(path.join(publicDir, "widget.js"), widgetJs);
 
 console.log("Widget files copied to test/public (ui.html inlined into widget.js).");
