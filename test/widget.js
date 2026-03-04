@@ -11,6 +11,9 @@
   // Read store ID from script tag data attribute
   const scriptTag = document.currentScript;
   const storeId = scriptTag.getAttribute("data-store-id") || "demo-store";
+  // Base URL for CDN/embed (e.g. Salla): resolve assets from script origin
+  const scriptSrc = scriptTag ? scriptTag.src : "";
+  const WIDGET_BASE = scriptSrc ? scriptSrc.replace(/\/[^/]*$/, "/") : "";
 
   console.log("Widget loaded for store:", storeId);
 
@@ -52,10 +55,10 @@
   // ========================================
   // CSS LOADING FUNCTIONALITY
   // ========================================
-  // Load CSS stylesheet into shadow DOM
+  // Load CSS stylesheet into shadow DOM (use base URL when embedded from CDN)
   const style = document.createElement("link");
   style.rel = "stylesheet";
-  style.href = "widget.css"; // CSS file path
+  style.href = WIDGET_BASE ? WIDGET_BASE + "widget.css" : "widget.css";
   shadow.appendChild(style);
 
 
@@ -68,7 +71,7 @@
   // HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
   // ========================================
   // Load HTML template and initialize all DOM elements
-  fetch("ui.html") // Load HTML template
+  fetch(WIDGET_BASE ? WIDGET_BASE + "ui.html" : "ui.html") // Load HTML template
         .then(res => res.text())
         .then(html => {
       shadow.innerHTML += html; // Inject HTML into shadow DOM
@@ -125,11 +128,11 @@
       // ========================================
       // ASSET PATH HELPER FUNCTIONALITY
       // ========================================
-      // Helper function to get correct asset paths in shadow DOM
+      // Helper function to get correct asset paths in shadow DOM (CDN-safe when WIDGET_BASE set)
           const getAssetPath = (filename) => {
-            // Since we're at /test/index.html, assets are at ../assets/
-            return `../assets/${filename}`;
+            return WIDGET_BASE ? (WIDGET_BASE + "assets/" + filename) : ("../assets/" + filename);
           };
+          const assetUrl = (path) => WIDGET_BASE ? (WIDGET_BASE + "assets/" + path) : ("assets/" + path);
           
 
       // ========================================
@@ -238,28 +241,28 @@
           let backgroundImagePath;
           switch(themeName) {
             case 'green':
-              backgroundImagePath = "url('assets/main-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-bg.png") + "')";
               break;
             case 'red':
-              backgroundImagePath = "url('assets/main-red-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-red-bg.png") + "')";
               break;
             case 'blue':
-              backgroundImagePath = "url('assets/main-blue-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-blue-bg.png") + "')";
               break;
             case 'yellow':
-              backgroundImagePath = "url('assets/main-yellow-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-yellow-bg.png") + "')";
               break;
             case 'cyan':
-              backgroundImagePath = "url('assets/main-cyan-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-cyan-bg.png") + "')";
               break;
             case 'black':
-              backgroundImagePath = "url('assets/main-black-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-black-bg.png") + "')";
               break;
             case 'white':
-              backgroundImagePath = "url('assets/main-white-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-white-bg.png") + "')";
               break;
             default:
-              backgroundImagePath = "url('assets/main-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-bg.png") + "')";
               break;
           }
           fugahBody.style.removeProperty("background-image");
@@ -842,7 +845,8 @@
             
             if (mobileBackgroundMap[themeName]) {
               console.log(`Setting mobile background for ${themeName} theme`);
-              chatWindow.style.setProperty("background-image", `url(/assets/${mobileBackgroundMap[themeName]})`, "important");
+              const bgUrl = getAssetPath(mobileBackgroundMap[themeName]);
+              chatWindow.style.setProperty("background-image", `url(${bgUrl})`, "important");
               chatWindow.style.setProperty("background-size", "cover", "important");
               chatWindow.style.setProperty("background-position", "center", "important");
               chatWindow.style.setProperty("background-repeat", "no-repeat", "important");
@@ -1124,28 +1128,28 @@
               let backgroundImagePath;
               switch(themeName) {
                 case 'green':
-                  backgroundImagePath = "url('assets/main-bg.png')";
+                  backgroundImagePath = "url('" + assetUrl("main-bg.png") + "')";
                   break;
                 case 'red':
-                  backgroundImagePath = "url('assets/main-red-bg.png')";
+                  backgroundImagePath = "url('" + assetUrl("main-red-bg.png") + "')";
                   break;
                 case 'blue':
-                  backgroundImagePath = "url('assets/main-blue-bg.png')";
+                  backgroundImagePath = "url('" + assetUrl("main-blue-bg.png") + "')";
                   break;
                 case 'yellow':
-                  backgroundImagePath = "url('assets/main-yellow-bg.png')";
+                  backgroundImagePath = "url('" + assetUrl("main-yellow-bg.png") + "')";
                   break;
                 case 'cyan':
-                  backgroundImagePath = "url('assets/main-cyan-bg.png')";
+                  backgroundImagePath = "url('" + assetUrl("main-cyan-bg.png") + "')";
                   break;
                 case 'black':
-                  backgroundImagePath = "url('assets/main-black-bg.png')";
+                  backgroundImagePath = "url('" + assetUrl("main-black-bg.png") + "')";
                   break;
                 case 'white':
-                  backgroundImagePath = "url('assets/main-white-bg.png')";
+                  backgroundImagePath = "url('" + assetUrl("main-white-bg.png") + "')";
                   break;
                 default:
-                  backgroundImagePath = "url('assets/main-bg.png')";
+                  backgroundImagePath = "url('" + assetUrl("main-bg.png") + "')";
                   break;
               }
               fugahBody.style.removeProperty("background-image");
@@ -4302,28 +4306,28 @@
           switch(themeName) {
             case 'green':
               // Use main-bg.png for green theme as specified
-              backgroundImagePath = "url('assets/main-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-bg.png") + "')";
               break;
             case 'red':
-              backgroundImagePath = "url('assets/main-red-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-red-bg.png") + "')";
               break;
             case 'blue':
-              backgroundImagePath = "url('assets/main-blue-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-blue-bg.png") + "')";
               break;
             case 'yellow':
-              backgroundImagePath = "url('assets/main-yellow-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-yellow-bg.png") + "')";
               break;
             case 'cyan':
-              backgroundImagePath = "url('assets/main-cyan-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-cyan-bg.png") + "')";
               break;
             case 'black':
-              backgroundImagePath = "url('assets/main-black-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-black-bg.png") + "')";
               break;
             case 'white':
-              backgroundImagePath = "url('assets/main-white-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-white-bg.png") + "')";
               break;
             default:
-              backgroundImagePath = "url('assets/main-bg.png')";
+              backgroundImagePath = "url('" + assetUrl("main-bg.png") + "')";
               break;
           }
           // Only set background image if chat is not open OR if not mobile (on tablet/desktop, keep background even when chat is open)
