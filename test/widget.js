@@ -29,6 +29,8 @@
   // Create wrapper element and attach shadow DOM for style isolation
   const wrapper = document.createElement("div");
   wrapper.id = "chatbot-widget-root";
+  // Isolate host from Salla (and other hosts): prevent CSS leakage and overrides
+  wrapper.style.cssText = "all: initial; display: block !important; position: fixed !important; bottom: 0 !important; right: 0 !important; z-index: 2147483647 !important; font-family: system-ui, -apple-system, sans-serif !important; margin: 0 !important; padding: 0 !important; border: none !important;";
   document.body.appendChild(wrapper);
 
   // API call to n8n webhook (for future integration)
@@ -55,10 +57,11 @@
   // ========================================
   // CSS LOADING FUNCTIONALITY
   // ========================================
-  // Load CSS stylesheet into shadow DOM (use base URL when embedded from CDN)
+  // Load CSS stylesheet into shadow DOM (use base URL when embedded from CDN e.g. Salla)
   const style = document.createElement("link");
   style.rel = "stylesheet";
   style.href = WIDGET_BASE ? WIDGET_BASE + "widget.css" : "widget.css";
+  if (WIDGET_BASE) style.crossOrigin = "anonymous";
   shadow.appendChild(style);
 
 
@@ -77,6 +80,10 @@
       }
       return html;
     }).then(html => {
+      // Fix relative asset paths so images load from widget origin (Vercel), not Salla
+      if (WIDGET_BASE && typeof html === "string") {
+        html = html.replace(/\.\.\/assets\//g, WIDGET_BASE + "assets/");
+      }
       shadow.innerHTML += html; // Inject HTML into shadow DOM
 
       // Select all required DOM elements from shadow DOM
