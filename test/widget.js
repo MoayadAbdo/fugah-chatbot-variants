@@ -56,10 +56,13 @@
   function tryShowWidget() {
     if (cssLoaded && htmlInjected) wrapper.style.setProperty("visibility", "visible", "important");
   }
+  function forceShowWidget() {
+    wrapper.style.setProperty("visibility", "visible", "important");
+  }
   style.onload = function() { cssLoaded = true; tryShowWidget(); };
   style.onerror = function() { cssLoaded = true; tryShowWidget(); };
   shadow.appendChild(style);
-  setTimeout(tryShowWidget, 3500);
+  setTimeout(forceShowWidget, 2500);
 
 
   // ========================================
@@ -4773,6 +4776,10 @@
       htmlInjected = true;
       tryShowWidget();
     })
-    .catch(err => console.error("Failed to load ui.html:", err));
+    .catch(function(err) {
+      console.error("Failed to load ui.html:", err);
+      htmlInjected = true;
+      tryShowWidget();
+    });
 
 })();
