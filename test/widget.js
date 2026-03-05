@@ -8,13 +8,15 @@
   // ========================================
   // STORE ID CONFIGURATION FUNCTIONALITY
   // ========================================
-  // Read store ID from script tag data attribute
+  // Read store ID and merchant ID from script tag (Salla app snippet)
   const scriptTag = document.currentScript;
   const storeId = scriptTag.getAttribute("data-store-id") || "demo-store";
+  const merchantId = scriptTag.getAttribute("data-merchant-id") || "";
   // Base URL for CDN/embed (e.g. Salla): resolve assets from script origin
   const scriptSrc = scriptTag ? scriptTag.src : "";
   const WIDGET_BASE = scriptSrc ? scriptSrc.replace(/\/[^/]*$/, "/") : "";
 
+  const WEBHOOK_URL = "https://n8n.srv1196634.hstgr.cloud/webhook/user";
   console.log("Widget loaded for store:", storeId);
 
 
@@ -30,22 +32,9 @@
   const wrapper = document.createElement("div");
   wrapper.id = "chatbot-widget-root";
   // Isolate host from Salla (and other hosts): prevent CSS leakage and overrides
-  wrapper.style.cssText = "all: initial; display: block !important; position: fixed !important; bottom: 0 !important; right: 0 !important; z-index: 2147483647 !important; font-family: system-ui, -apple-system, sans-serif !important; margin: 0 !important; padding: 0 !important; border: none !important;";
+  wrapper.style.cssText = "all: initial; display: block !important; position: fixed !important; bottom: 0 !important; right: 0 !important; z-index: 2147483647 !important; font-family: system-ui, -apple-system, sans-serif !important; margin: 0 !important; padding: 0 !important; border: none !important; visibility: hidden !important;";
   document.body.appendChild(wrapper);
 
-  // API call to n8n webhook (for future integration)
-  fetch("https://n8n.srv1196634.hstgr.cloud/webhook/user", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    // body: JSON.stringify({ message: "hello" })
-  })
-  .then(async res => {
-    const text = await res.text();
-    console.log("Status:", res.status);
-  //  console.log("Body:", text);
-  })
-  .catch(console.error);
-  
   const shadow = wrapper.attachShadow({ mode: "open" }); // Create shadow DOM
 
 
@@ -62,7 +51,11 @@
   style.rel = "stylesheet";
   style.href = WIDGET_BASE ? WIDGET_BASE + "widget.css" : "widget.css";
   if (WIDGET_BASE) style.crossOrigin = "anonymous";
+  function showWidget() { wrapper.style.setProperty("visibility", "visible", "important"); }
+  style.onload = showWidget;
+  style.onerror = function() { setTimeout(showWidget, 800); };
   shadow.appendChild(style);
+  setTimeout(showWidget, 2500);
 
 
   // ========================================
@@ -134,6 +127,15 @@
       // END HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
       // ========================================
 
+      // Phone number from home screen (for webhook when user sends in chat)
+      let currentPhoneNumber = "";
+      function sendToWebhook(payload) {
+        fetch(WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }).catch(function(e) { console.error("Fugah webhook error:", e); });
+      }
 
       // ========================================
       // ASSET PATH HELPER FUNCTIONALITY
@@ -1737,7 +1739,9 @@
             const isNotInvalid = !phoneInput.classList.contains("invalid");
             
             if (isValidLength && isValidPattern && isNotInvalid) {
-              // Phone number is valid, open chat detail directly (individual chat screen)
+              // Store phone for webhook and notify backend
+              currentPhoneNumber = "+" + phoneNumber;
+              sendToWebhook({ merchant_id: merchantId, store_id: storeId, phone_number: currentPhoneNumber, body: "opened_chat" });
               // Clear phone input when leaving home screen
               if (phoneInput) {
                 phoneInput.value = "";
@@ -1907,7 +1911,8 @@
             const isNotInvalid = !phoneInput.classList.contains("invalid");
             
             if (isValidLength && isValidPattern && isNotInvalid) {
-              // Phone number is valid, open chat detail directly (individual chat screen)
+              currentPhoneNumber = "+" + phoneNumber;
+              sendToWebhook({ merchant_id: merchantId, store_id: storeId, phone_number: currentPhoneNumber, body: "opened_chat" });
               // Clear phone input when leaving home screen
               if (phoneInput) {
                 phoneInput.value = "";
@@ -2605,10 +2610,13 @@
         
         if (!message && !file) return;
         
+        var payload = { merchant_id: merchantId, store_id: storeId, phone_number: currentPhoneNumber, body: message || "" };
+        
         if (hasImage) {
           const reader = new FileReader();
           reader.onload = (e) => {
             const imageDataUrl = e.target.result;
+            sendToWebhook(Object.assign({}, payload, { image_base64: imageDataUrl, file_name: file.name }));
             addDetailMessageWithImage(message || "", imageDataUrl, true, false);
             messageDetailInput.value = "";
             if (typeof hideFilePreview === "function") hideFilePreview();
@@ -2621,6 +2629,7 @@
           };
           reader.readAsDataURL(file);
         } else if (hasVideo) {
+          sendToWebhook(Object.assign({}, payload, { file_name: file.name, file_type: "video" }));
           const blobUrl = URL.createObjectURL(file);
           addDetailMessageWithFile(message || file.name, blobUrl, "video", file.name, true, false);
           messageDetailInput.value = "";
@@ -2641,6 +2650,7 @@
                           file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
                           file.name.toLowerCase().endsWith(".xls") || 
                           file.name.toLowerCase().endsWith(".xlsx");
+          sendToWebhook(Object.assign({}, payload, { file_name: file.name, file_type: isPdf ? "pdf" : isWord ? "word" : isExcel ? "excel" : "other" }));
           const blobUrl = URL.createObjectURL(file);
           let fileType = "other";
           if (isPdf) fileType = "pdf";
@@ -2656,6 +2666,7 @@
             addDetailMessageWithFile("شكراً لك! تم استلام الملف.", blobUrl, fileType, file.name, false, true);
           }, 1500);
         } else {
+          sendToWebhook(payload);
           addDetailMessage(message, true, false);
           messageDetailInput.value = "";
           if (typeof hideFilePreview === "function") hideFilePreview();

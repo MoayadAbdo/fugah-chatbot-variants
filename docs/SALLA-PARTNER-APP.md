@@ -71,6 +71,7 @@ Snippet format:
   src="https://cdn.yourdomain.com/widget/v1/widget.js"
   charset="UTF-8"
   data-store-id="{{store_id}}"
+  data-merchant-id="{{merchant_id}}"
   data-theme="green">
 </script>
 ```
