@@ -61,8 +61,8 @@ fetch("https://n8n.srv1196634.hstgr.cloud/webhook-test/user", {
 <!-- ========================================
      MAIN CHAT WINDOW FUNCTIONALITY
      ======================================== -->
-<!-- Main chat window container with all chat functionality -->
-<div id="chat-window">
+<!-- Main chat window container with all chat functionality (dir=rtl for Arabic) -->
+<div id="chat-window" dir="rtl">
   <div id="chat-container">
     <div id="fugah-main-container">
 
@@ -140,35 +140,10 @@ fetch("https://n8n.srv1196634.hstgr.cloud/webhook-test/user", {
           <p>تاريخ الدردشة</p>
         </div>
         
-        <!-- Message items container -->
+        <!-- Message items container (no mock data; empty state shown until conversations loaded) -->
         <div class="message-container">
-          <!-- Empty state message (shown when no messages) -->
-          <div id="no-messages-empty-state" class="no-messages-empty-state" style="display: none;">
-            <p>لا توجد رسائل</p>
-          </div>
-          
-          <!-- First message item -->
-          <div class="message-item" data-message-id="1">
-            <div class="fugah-message-content">
-              <p class="fugah-message-heading">إذا كنت لا تزال بحاجة إلى أي مساعدة۔۔</p>
-              <div class="fugah-message-date-time">
-                <p class="date">19 Nov 2025</p>
-                <p class="time">03:53</p>
-              </div>
-            </div>
-            <img src="../assets/right-arrow.png" alt="message right" />
-          </div>
-          
-          <!-- Second message item -->
-          <div class="message-item" data-message-id="1">
-            <div class="fugah-message-content">
-              <p class="fugah-message-heading">إذا كنت لا تزال بحاجة إلى أي مساعدة۔۔</p>
-              <div class="fugah-message-date-time">
-                <p class="date">19 Nov 2025</p>
-                <p class="time">03:53</p>
-              </div>
-            </div>
-            <img src="../assets/right-arrow.png" alt="message right" />
+          <div id="no-messages-empty-state" class="no-messages-empty-state">
+            <p>لا يوجد محادثات</p>
           </div>
         </div>
       </div>
@@ -210,29 +185,12 @@ fetch("https://n8n.srv1196634.hstgr.cloud/webhook-test/user", {
           </div>
         </div>
         
-        <!-- Chat messages and input section -->
+        <!-- Chat messages and input section (no mock data) -->
         <div class="message-detail-chat">
-          <!-- Messages container with demo messages -->
           <div class="message-detail-messages" id="message-detail-messages">
-            <!-- Demo bot message -->
-            <div class="chat-message chat-message-bot">
-              <div class="chat-message-content">
-                <p>مرحباً! كيف يمكنني مساعدتك اليوم؟</p>
-              </div>
-            </div>
-            
-            <!-- Demo user message -->
-            <div class="chat-message chat-message-user">
-              <div class="chat-message-content">
-                <p>أحتاج إلى مساعدة في طلبي</p>
-              </div>
-            </div>
-            
-            <!-- Demo bot response -->
-            <div class="chat-message chat-message-bot">
-              <div class="chat-message-content">
-                <p>بالطبع، سأكون سعيداً لمساعدتك. ما هو رقم الطلب الخاص بك؟</p>
-              </div>
+            <!-- Empty state: shown when no messages (hidden by JS when messages exist) -->
+            <div id="message-detail-empty-state" class="message-detail-empty-state">
+              <p>لا يوجد محادثات</p>
             </div>
           </div>
           

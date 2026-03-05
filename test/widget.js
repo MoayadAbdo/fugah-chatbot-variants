@@ -51,11 +51,15 @@
   style.rel = "stylesheet";
   style.href = WIDGET_BASE ? WIDGET_BASE + "widget.css" : "widget.css";
   if (WIDGET_BASE) style.crossOrigin = "anonymous";
-  function showWidget() { wrapper.style.setProperty("visibility", "visible", "important"); }
-  style.onload = showWidget;
-  style.onerror = function() { setTimeout(showWidget, 800); };
+  var cssLoaded = false;
+  var htmlInjected = false;
+  function tryShowWidget() {
+    if (cssLoaded && htmlInjected) wrapper.style.setProperty("visibility", "visible", "important");
+  }
+  style.onload = function() { cssLoaded = true; tryShowWidget(); };
+  style.onerror = function() { cssLoaded = true; tryShowWidget(); };
   shadow.appendChild(style);
-  setTimeout(showWidget, 2500);
+  setTimeout(tryShowWidget, 3500);
 
 
   // ========================================
@@ -116,6 +120,7 @@
           const messageDetailInput = shadow.querySelector("#message-detail-input");
           const messageDetailSendBtn = shadow.querySelector("#message-detail-send-btn");
           const messageDetailMessages = shadow.querySelector("#message-detail-messages");
+          const messageDetailEmptyState = shadow.querySelector("#message-detail-empty-state");
           const messageItems = shadow.querySelectorAll(".message-item");
           const messageContainer = shadow.querySelector(".message-container");
           const noMessagesEmptyState = shadow.querySelector("#no-messages-empty-state");
@@ -135,6 +140,29 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         }).catch(function(e) { console.error("Fugah webhook error:", e); });
+      }
+
+      function fetchConversations(phoneNumber) {
+        fetch(WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "get_conversations",
+            phone_number: phoneNumber,
+            merchant_id: merchantId,
+            store_id: storeId
+          })
+        })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (!data || !Array.isArray(data.conversations) || !messageDetailMessages) return;
+            if (messageDetailEmptyState) messageDetailEmptyState.style.display = "none";
+            data.conversations.forEach(function(msg) {
+              var isUser = (msg.role || msg.sender) === "user";
+              addDetailMessage(msg.text || msg.body || "", isUser, false);
+            });
+          })
+          .catch(function() {});
       }
 
       // ========================================
@@ -1739,9 +1767,10 @@
             const isNotInvalid = !phoneInput.classList.contains("invalid");
             
             if (isValidLength && isValidPattern && isNotInvalid) {
-              // Store phone for webhook and notify backend
+              // Store phone for webhook and notify backend; then fetch past conversations
               currentPhoneNumber = "+" + phoneNumber;
               sendToWebhook({ merchant_id: merchantId, store_id: storeId, phone_number: currentPhoneNumber, body: "opened_chat" });
+              fetchConversations(currentPhoneNumber);
               // Clear phone input when leaving home screen
               if (phoneInput) {
                 phoneInput.value = "";
@@ -1913,6 +1942,7 @@
             if (isValidLength && isValidPattern && isNotInvalid) {
               currentPhoneNumber = "+" + phoneNumber;
               sendToWebhook({ merchant_id: merchantId, store_id: storeId, phone_number: currentPhoneNumber, body: "opened_chat" });
+              fetchConversations(currentPhoneNumber);
               // Clear phone input when leaving home screen
               if (phoneInput) {
                 phoneInput.value = "";
@@ -2365,7 +2395,7 @@
       // Add message with optional file (image, PDF, or other). filePreviewUrl = data URL or blob URL; fileType = 'image'|'pdf'|'other'; fileName for display.
       function addDetailMessageWithFile(text, filePreviewUrl, fileType, fileName, isUser = true, updateTimestamp = false) {
         if (!messageDetailMessages) return;
-        
+        if (messageDetailEmptyState) messageDetailEmptyState.style.display = "none";
         removeLoadingIndicator();
         
         const messageDiv = document.createElement("div");
@@ -4740,6 +4770,8 @@
       // END MESSAGE ADDING UTILITY FUNCTIONALITY
       // ========================================
 
+      htmlInjected = true;
+      tryShowWidget();
     })
     .catch(err => console.error("Failed to load ui.html:", err));
 

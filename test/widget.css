@@ -1675,6 +1675,26 @@ body.chat-open * {
   margin: 0;
   padding: 0;
 }
+
+/* Empty state in message detail (chat) when no messages */
+.message-detail-empty-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 40px 20px;
+  text-align: center;
+  flex: 1;
+  min-height: 120px;
+}
+.message-detail-empty-state p {
+  font-size: 16px;
+  font-weight: 500;
+  color: #666;
+  margin: 0;
+  padding: 0;
+}
+
 .fugah-message-content{
   display: flex;
   flex-direction: column;
