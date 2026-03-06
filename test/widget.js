@@ -75,6 +75,8 @@
   fetch(WIDGET_BASE + "ui.html")
         .then(res => res.text())
         .then(html => {
+      // Resolve relative asset URLs so they load from script origin (Salla/embed fix)
+      if (WIDGET_BASE) html = html.replace(/src="\.\.\/assets\//g, "src=\"" + WIDGET_BASE + "assets/");
       shadow.innerHTML += html; // Inject HTML into shadow DOM
 
       // Select all required DOM elements from shadow DOM
