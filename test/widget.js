@@ -4672,15 +4672,12 @@
       // ========================================
       // INITIAL THEME SETUP FUNCTIONALITY
       // ========================================
-      // Set initial theme if specified in script tag data attribute
-      const scriptTag = document.querySelector('script[data-theme]');
-      if (scriptTag) {
-        const initialTheme = scriptTag.getAttribute('data-theme');
-        if (initialTheme) {
-          setTimeout(() => {
-            changeTheme(initialTheme);
-          }, 100);
-        }
+      // Use our widget script tag (not querySelector) so we don't pick up another app's data-theme on Salla
+      const initialTheme = scriptTag.getAttribute('data-theme');
+      if (initialTheme) {
+        setTimeout(() => {
+          changeTheme(initialTheme);
+        }, 100);
       }
 
 
