@@ -8,15 +8,10 @@
   // ========================================
   // STORE ID CONFIGURATION FUNCTIONALITY
   // ========================================
-  // Read store ID and merchant ID from script tag (Salla app snippet)
+  // Read store ID from script tag data attribute
   const scriptTag = document.currentScript;
   const storeId = scriptTag.getAttribute("data-store-id") || "demo-store";
-  const merchantId = scriptTag.getAttribute("data-merchant-id") || "";
-  // Base URL for CDN/embed (e.g. Salla): resolve assets from script origin
-  const scriptSrc = scriptTag ? scriptTag.src : "";
-  const WIDGET_BASE = scriptSrc ? scriptSrc.replace(/\/[^/]*$/, "/") : "";
 
-  const WEBHOOK_URL = "https://n8n.srv1196634.hstgr.cloud/webhook/user";
   console.log("Widget loaded for store:", storeId);
 
 
@@ -31,10 +26,21 @@
   // Create wrapper element and attach shadow DOM for style isolation
   const wrapper = document.createElement("div");
   wrapper.id = "chatbot-widget-root";
-  // Isolate host from Salla (and other hosts): prevent CSS leakage and overrides
-  wrapper.style.cssText = "all: initial; display: block !important; position: fixed !important; bottom: 0 !important; right: 0 !important; z-index: 2147483647 !important; font-family: system-ui, -apple-system, sans-serif !important; margin: 0 !important; padding: 0 !important; border: none !important; visibility: hidden !important;";
   document.body.appendChild(wrapper);
 
+  // API call to n8n webhook (for future integration)
+  fetch("https://n8n.srv1196634.hstgr.cloud/webhook/user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // body: JSON.stringify({ message: "hello" })
+  })
+  .then(async res => {
+    const text = await res.text();
+    console.log("Status:", res.status);
+  //  console.log("Body:", text);
+  })
+  .catch(console.error);
+  
   const shadow = wrapper.attachShadow({ mode: "open" }); // Create shadow DOM
 
 
@@ -46,23 +52,11 @@
   // ========================================
   // CSS LOADING FUNCTIONALITY
   // ========================================
-  // Load CSS stylesheet into shadow DOM (use base URL when embedded from CDN e.g. Salla)
+  // Load CSS stylesheet into shadow DOM
   const style = document.createElement("link");
   style.rel = "stylesheet";
-  style.href = WIDGET_BASE ? WIDGET_BASE + "widget.css" : "widget.css";
-  if (WIDGET_BASE) style.crossOrigin = "anonymous";
-  var cssLoaded = false;
-  var htmlInjected = false;
-  function tryShowWidget() {
-    if (cssLoaded && htmlInjected) wrapper.style.setProperty("visibility", "visible", "important");
-  }
-  function forceShowWidget() {
-    wrapper.style.setProperty("visibility", "visible", "important");
-  }
-  style.onload = function() { cssLoaded = true; tryShowWidget(); };
-  style.onerror = function() { cssLoaded = true; tryShowWidget(); };
+  style.href = "widget.css"; // CSS file path
   shadow.appendChild(style);
-  setTimeout(forceShowWidget, 2500);
 
 
   // ========================================
@@ -73,17 +67,10 @@
   // ========================================
   // HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
   // ========================================
-  // Build replaces __UI_HTML_INLINED__ with inlined ui.html (snippet/CDN: no second request)
-  Promise.resolve("__UI_HTML_INLINED__").then(html => {
-      if (html === "__UI_HTML_INLINED__") {
-        return fetch(WIDGET_BASE ? WIDGET_BASE + "ui.html" : "ui.html").then(r => r.text());
-      }
-      return html;
-    }).then(html => {
-      // Fix relative asset paths so images load from widget origin (Vercel), not Salla
-      if (WIDGET_BASE && typeof html === "string") {
-        html = html.replace(/\.\.\/assets\//g, WIDGET_BASE + "assets/");
-      }
+  // Load HTML template and initialize all DOM elements
+  fetch("ui.html") // Load HTML template
+        .then(res => res.text())
+        .then(html => {
       shadow.innerHTML += html; // Inject HTML into shadow DOM
 
       // Select all required DOM elements from shadow DOM
@@ -123,7 +110,6 @@
           const messageDetailInput = shadow.querySelector("#message-detail-input");
           const messageDetailSendBtn = shadow.querySelector("#message-detail-send-btn");
           const messageDetailMessages = shadow.querySelector("#message-detail-messages");
-          const messageDetailEmptyState = shadow.querySelector("#message-detail-empty-state");
           const messageItems = shadow.querySelectorAll(".message-item");
           const messageContainer = shadow.querySelector(".message-container");
           const noMessagesEmptyState = shadow.querySelector("#no-messages-empty-state");
@@ -135,47 +121,15 @@
       // END HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
       // ========================================
 
-      // Phone number from home screen (for webhook when user sends in chat)
-      let currentPhoneNumber = "";
-      function sendToWebhook(payload) {
-        fetch(WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        }).catch(function(e) { console.error("Fugah webhook error:", e); });
-      }
-
-      function fetchConversations(phoneNumber) {
-        fetch(WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "get_conversations",
-            phone_number: phoneNumber,
-            merchant_id: merchantId,
-            store_id: storeId
-          })
-        })
-          .then(function(r) { return r.json(); })
-          .then(function(data) {
-            if (!data || !Array.isArray(data.conversations) || !messageDetailMessages) return;
-            if (messageDetailEmptyState) messageDetailEmptyState.style.display = "none";
-            data.conversations.forEach(function(msg) {
-              var isUser = (msg.role || msg.sender) === "user";
-              addDetailMessage(msg.text || msg.body || "", isUser, false);
-            });
-          })
-          .catch(function() {});
-      }
 
       // ========================================
       // ASSET PATH HELPER FUNCTIONALITY
       // ========================================
-      // Helper function to get correct asset paths in shadow DOM (CDN-safe when WIDGET_BASE set)
+      // Helper function to get correct asset paths in shadow DOM
           const getAssetPath = (filename) => {
-            return WIDGET_BASE ? (WIDGET_BASE + "assets/" + filename) : ("../assets/" + filename);
+            // Since we're at /test/index.html, assets are at ../assets/
+            return `../assets/${filename}`;
           };
-          const assetUrl = (path) => WIDGET_BASE ? (WIDGET_BASE + "assets/" + path) : ("assets/" + path);
           
 
       // ========================================
@@ -284,28 +238,28 @@
           let backgroundImagePath;
           switch(themeName) {
             case 'green':
-              backgroundImagePath = "url('" + assetUrl("main-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-bg.png')";
               break;
             case 'red':
-              backgroundImagePath = "url('" + assetUrl("main-red-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-red-bg.png')";
               break;
             case 'blue':
-              backgroundImagePath = "url('" + assetUrl("main-blue-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-blue-bg.png')";
               break;
             case 'yellow':
-              backgroundImagePath = "url('" + assetUrl("main-yellow-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-yellow-bg.png')";
               break;
             case 'cyan':
-              backgroundImagePath = "url('" + assetUrl("main-cyan-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-cyan-bg.png')";
               break;
             case 'black':
-              backgroundImagePath = "url('" + assetUrl("main-black-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-black-bg.png')";
               break;
             case 'white':
-              backgroundImagePath = "url('" + assetUrl("main-white-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-white-bg.png')";
               break;
             default:
-              backgroundImagePath = "url('" + assetUrl("main-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-bg.png')";
               break;
           }
           fugahBody.style.removeProperty("background-image");
@@ -888,8 +842,7 @@
             
             if (mobileBackgroundMap[themeName]) {
               console.log(`Setting mobile background for ${themeName} theme`);
-              const bgUrl = getAssetPath(mobileBackgroundMap[themeName]);
-              chatWindow.style.setProperty("background-image", `url(${bgUrl})`, "important");
+              chatWindow.style.setProperty("background-image", `url(/assets/${mobileBackgroundMap[themeName]})`, "important");
               chatWindow.style.setProperty("background-size", "cover", "important");
               chatWindow.style.setProperty("background-position", "center", "important");
               chatWindow.style.setProperty("background-repeat", "no-repeat", "important");
@@ -1171,28 +1124,28 @@
               let backgroundImagePath;
               switch(themeName) {
                 case 'green':
-                  backgroundImagePath = "url('" + assetUrl("main-bg.png") + "')";
+                  backgroundImagePath = "url('assets/main-bg.png')";
                   break;
                 case 'red':
-                  backgroundImagePath = "url('" + assetUrl("main-red-bg.png") + "')";
+                  backgroundImagePath = "url('assets/main-red-bg.png')";
                   break;
                 case 'blue':
-                  backgroundImagePath = "url('" + assetUrl("main-blue-bg.png") + "')";
+                  backgroundImagePath = "url('assets/main-blue-bg.png')";
                   break;
                 case 'yellow':
-                  backgroundImagePath = "url('" + assetUrl("main-yellow-bg.png") + "')";
+                  backgroundImagePath = "url('assets/main-yellow-bg.png')";
                   break;
                 case 'cyan':
-                  backgroundImagePath = "url('" + assetUrl("main-cyan-bg.png") + "')";
+                  backgroundImagePath = "url('assets/main-cyan-bg.png')";
                   break;
                 case 'black':
-                  backgroundImagePath = "url('" + assetUrl("main-black-bg.png") + "')";
+                  backgroundImagePath = "url('assets/main-black-bg.png')";
                   break;
                 case 'white':
-                  backgroundImagePath = "url('" + assetUrl("main-white-bg.png") + "')";
+                  backgroundImagePath = "url('assets/main-white-bg.png')";
                   break;
                 default:
-                  backgroundImagePath = "url('" + assetUrl("main-bg.png") + "')";
+                  backgroundImagePath = "url('assets/main-bg.png')";
                   break;
               }
               fugahBody.style.removeProperty("background-image");
@@ -1770,10 +1723,7 @@
             const isNotInvalid = !phoneInput.classList.contains("invalid");
             
             if (isValidLength && isValidPattern && isNotInvalid) {
-              // Store phone for webhook and notify backend; then fetch past conversations
-              currentPhoneNumber = "+" + phoneNumber;
-              sendToWebhook({ merchant_id: merchantId, store_id: storeId, phone_number: currentPhoneNumber, body: "opened_chat" });
-              fetchConversations(currentPhoneNumber);
+              // Phone number is valid, open chat detail directly (individual chat screen)
               // Clear phone input when leaving home screen
               if (phoneInput) {
                 phoneInput.value = "";
@@ -1943,9 +1893,7 @@
             const isNotInvalid = !phoneInput.classList.contains("invalid");
             
             if (isValidLength && isValidPattern && isNotInvalid) {
-              currentPhoneNumber = "+" + phoneNumber;
-              sendToWebhook({ merchant_id: merchantId, store_id: storeId, phone_number: currentPhoneNumber, body: "opened_chat" });
-              fetchConversations(currentPhoneNumber);
+              // Phone number is valid, open chat detail directly (individual chat screen)
               // Clear phone input when leaving home screen
               if (phoneInput) {
                 phoneInput.value = "";
@@ -2398,7 +2346,7 @@
       // Add message with optional file (image, PDF, or other). filePreviewUrl = data URL or blob URL; fileType = 'image'|'pdf'|'other'; fileName for display.
       function addDetailMessageWithFile(text, filePreviewUrl, fileType, fileName, isUser = true, updateTimestamp = false) {
         if (!messageDetailMessages) return;
-        if (messageDetailEmptyState) messageDetailEmptyState.style.display = "none";
+        
         removeLoadingIndicator();
         
         const messageDiv = document.createElement("div");
@@ -2643,13 +2591,10 @@
         
         if (!message && !file) return;
         
-        var payload = { merchant_id: merchantId, store_id: storeId, phone_number: currentPhoneNumber, body: message || "" };
-        
         if (hasImage) {
           const reader = new FileReader();
           reader.onload = (e) => {
             const imageDataUrl = e.target.result;
-            sendToWebhook(Object.assign({}, payload, { image_base64: imageDataUrl, file_name: file.name }));
             addDetailMessageWithImage(message || "", imageDataUrl, true, false);
             messageDetailInput.value = "";
             if (typeof hideFilePreview === "function") hideFilePreview();
@@ -2662,7 +2607,6 @@
           };
           reader.readAsDataURL(file);
         } else if (hasVideo) {
-          sendToWebhook(Object.assign({}, payload, { file_name: file.name, file_type: "video" }));
           const blobUrl = URL.createObjectURL(file);
           addDetailMessageWithFile(message || file.name, blobUrl, "video", file.name, true, false);
           messageDetailInput.value = "";
@@ -2683,7 +2627,6 @@
                           file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
                           file.name.toLowerCase().endsWith(".xls") || 
                           file.name.toLowerCase().endsWith(".xlsx");
-          sendToWebhook(Object.assign({}, payload, { file_name: file.name, file_type: isPdf ? "pdf" : isWord ? "word" : isExcel ? "excel" : "other" }));
           const blobUrl = URL.createObjectURL(file);
           let fileType = "other";
           if (isPdf) fileType = "pdf";
@@ -2699,7 +2642,6 @@
             addDetailMessageWithFile("شكراً لك! تم استلام الملف.", blobUrl, fileType, file.name, false, true);
           }, 1500);
         } else {
-          sendToWebhook(payload);
           addDetailMessage(message, true, false);
           messageDetailInput.value = "";
           if (typeof hideFilePreview === "function") hideFilePreview();
@@ -4360,28 +4302,28 @@
           switch(themeName) {
             case 'green':
               // Use main-bg.png for green theme as specified
-              backgroundImagePath = "url('" + assetUrl("main-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-bg.png')";
               break;
             case 'red':
-              backgroundImagePath = "url('" + assetUrl("main-red-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-red-bg.png')";
               break;
             case 'blue':
-              backgroundImagePath = "url('" + assetUrl("main-blue-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-blue-bg.png')";
               break;
             case 'yellow':
-              backgroundImagePath = "url('" + assetUrl("main-yellow-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-yellow-bg.png')";
               break;
             case 'cyan':
-              backgroundImagePath = "url('" + assetUrl("main-cyan-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-cyan-bg.png')";
               break;
             case 'black':
-              backgroundImagePath = "url('" + assetUrl("main-black-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-black-bg.png')";
               break;
             case 'white':
-              backgroundImagePath = "url('" + assetUrl("main-white-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-white-bg.png')";
               break;
             default:
-              backgroundImagePath = "url('" + assetUrl("main-bg.png") + "')";
+              backgroundImagePath = "url('assets/main-bg.png')";
               break;
           }
           // Only set background image if chat is not open OR if not mobile (on tablet/desktop, keep background even when chat is open)
@@ -4773,13 +4715,7 @@
       // END MESSAGE ADDING UTILITY FUNCTIONALITY
       // ========================================
 
-      htmlInjected = true;
-      tryShowWidget();
     })
-    .catch(function(err) {
-      console.error("Failed to load ui.html:", err);
-      htmlInjected = true;
-      tryShowWidget();
-    });
+    .catch(err => console.error("Failed to load ui.html:", err));
 
 })();
