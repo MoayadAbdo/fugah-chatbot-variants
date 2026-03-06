@@ -24,3 +24,4 @@ widgetJs = "// Fugah widget snippet build (ui inlined, no ui.html fetch)\n" + wi
 fs.writeFileSync(path.join(publicDir, "widget.js"), widgetJs);
 
 console.log("Widget files copied to test/public (ui.html inlined into widget.js).");
+//hello nia7a
