@@ -957,6 +957,35 @@ body.chat-open * {
 [dir="rtl"] {
  direction: rtl;
 }
+/* Welcome text (مرحبا عزيزي العميل, كيف يمكننا مساعدتك) right-aligned */
+[dir="rtl"] .fugah-flex-col-end,
+[dir="rtl"] .welcome-title {
+ text-align: right;
+}
+/* Phone label (رقم الهاتف) and input RTL */
+[dir="rtl"] .fugah-number-div label {
+ text-align: right;
+}
+[dir="rtl"] .fugah-number-div input[type="tel"] {
+ direction: rtl !important;
+ text-align: right !important;
+}
+[dir="rtl"] .fugah-number-div input::placeholder,
+[dir="rtl"] .fugah-number-div input::-webkit-input-placeholder,
+[dir="rtl"] .fugah-number-div input::-moz-placeholder {
+ text-align: right !important;
+ direction: rtl !important;
+}
+[dir="rtl"] .custom-placeholder {
+ left: auto;
+ right: 16px;
+ direction: rtl;
+ text-align: right;
+}
+[dir="rtl"] .phone-validation-error {
+ left: auto;
+ right: 16px;
+}
 /* Send button: icon left, text right (match reference layout) */
 [dir="rtl"] .fugah-send-button {
  flex-direction: row-reverse;

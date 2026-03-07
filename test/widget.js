@@ -122,7 +122,10 @@
           const footerTabItems = shadow.querySelectorAll(".fugah-footer-tab-item");
           const fugahFooter = shadow.querySelector("#fugah-footer");
 
-          if (chatWindow) chatWindow.setAttribute("dir", "rtl");
+          const rtl = (scriptTag.getAttribute("data-rtl") || "").toLowerCase();
+          if (chatWindow && (rtl === "true" || rtl === "1" || rtl === "yes" || rtl === "ar")) {
+            chatWindow.setAttribute("dir", "rtl");
+          }
 
       // ========================================
       // END HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
