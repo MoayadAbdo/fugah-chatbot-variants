@@ -30,6 +30,7 @@
   // Create wrapper element and attach shadow DOM for style isolation
   const wrapper = document.createElement("div");
   wrapper.id = "chatbot-widget-root";
+  wrapper.setAttribute("dir", "ltr"); // isolate from page: widget is LTR unless data-rtl says otherwise
   document.body.appendChild(wrapper);
 
   // API call to n8n webhook (for future integration)
@@ -123,9 +124,8 @@
           const fugahFooter = shadow.querySelector("#fugah-footer");
 
           const rtl = (scriptTag.getAttribute("data-rtl") || "").toLowerCase();
-          if (chatWindow && (rtl === "true" || rtl === "1" || rtl === "yes" || rtl === "ar")) {
-            chatWindow.setAttribute("dir", "rtl");
-          }
+          const useRtl = rtl === "true" || rtl === "1" || rtl === "yes" || rtl === "ar";
+          if (chatWindow) chatWindow.setAttribute("dir", useRtl ? "rtl" : "ltr");
 
       // ========================================
       // END HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
