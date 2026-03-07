@@ -121,7 +121,8 @@
           const noMessagesEmptyState = shadow.querySelector("#no-messages-empty-state");
           const footerTabItems = shadow.querySelectorAll(".fugah-footer-tab-item");
           const fugahFooter = shadow.querySelector("#fugah-footer");
-          
+
+          if (chatWindow) chatWindow.setAttribute("dir", "rtl");
 
       // ========================================
       // END HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY

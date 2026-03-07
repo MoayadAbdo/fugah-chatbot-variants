@@ -957,6 +957,18 @@ body.chat-open * {
 [dir="rtl"] {
  direction: rtl;
 }
+/* Send button: icon left, text right (match reference layout) */
+[dir="rtl"] .fugah-send-button {
+ flex-direction: row-reverse;
+}
+/* Footer tabs: keep Message | Home order (LTR so not flipped) */
+[dir="rtl"] #fugah-footer-tab {
+ direction: ltr;
+}
+/* Footer branding: icon left, text right */
+[dir="rtl"] #fugah-footer-end {
+ flex-direction: row-reverse;
+}
 
 /* utilities classes */
 
