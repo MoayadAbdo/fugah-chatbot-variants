@@ -2732,14 +2732,19 @@
             addDetailMessageWithFile("شكراً لك! تم استلام الملف.", blobUrl, fileType, file.name, false, true);
           }, 1500);
         } else {
-          // Text-only message: send to Supabase chatbot API
+          // Text-only message: send to Supabase chatbot API (phone required for storage)
+          const phone = getEffectivePhone();
+          if (!phone) {
+            addDetailMessage("الرجاء إدخال رقم الهاتف أولاً من الصفحة الرئيسية.", false, true);
+            return;
+          }
+
           addDetailMessage(message, true, false);
           messageDetailInput.value = "";
           if (typeof hideFilePreview === "function") hideFilePreview();
           autoResizeTextarea();
           toggleMessageDetailSendButtonState();
 
-          const phone = getEffectivePhone();
           showLoadingIndicator();
 
           try {
@@ -4439,8 +4444,22 @@
           
           // Show custom confirmation message before creating ticket
           showCustomConfirmation("هل أنت متأكد من رفع تذكرة؟", () => {
-            // Show rating screen after confirmation
-            showRatingScreen();
+            const phone = getEffectivePhone();
+            if (phone && currentConversationId) {
+              postToChatbotApi({
+                message: "ticket_request",
+                phone,
+                conversationId: currentConversationId
+              })
+              .catch((err) => {
+                console.error("Failed to create ticket:", err);
+              })
+              .finally(() => {
+                showRatingScreen();
+              });
+            } else {
+              showRatingScreen();
+            }
           });
         });
       }
