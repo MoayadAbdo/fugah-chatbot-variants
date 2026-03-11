@@ -16,7 +16,17 @@
   const scriptSrc = scriptTag?.src;
   const WIDGET_BASE = (explicitBase && explicitBase.trim()) ? explicitBase.trim().replace(/\/?$/, "/") : (scriptSrc ? scriptSrc.replace(/\/[^/]*$/, "/") : "");
 
+  // API URL for Supabase Edge Function (chatbot-api)
+  const explicitApiUrl = scriptTag.getAttribute("data-api-url");
+  const API_URL = (explicitApiUrl && explicitApiUrl.trim())
+    || "https://pmzhsxlsnxvpzkiflxww.supabase.co/functions/v1/chatbot-api";
+
+  // Conversation and customer state shared across widget
+  let currentConversationId = null;
+  let currentCustomerPhone = null;
+
   console.log("Widget loaded for store:", storeId);
+  console.log("Using chatbot API URL:", API_URL);
 
 
   // ========================================
@@ -33,18 +43,27 @@
   wrapper.setAttribute("dir", "ltr"); // isolate from page: widget is LTR unless data-rtl says otherwise
   document.body.appendChild(wrapper);
 
-  // API call to n8n webhook (for future integration)
-  fetch("https://n8n.srv1196634.hstgr.cloud/webhook/user", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    // body: JSON.stringify({ message: "hello" })
-  })
-  .then(async res => {
-    const text = await res.text();
-    console.log("Status:", res.status);
-  //  console.log("Body:", text);
-  })
-  .catch(console.error);
+  // Initial config load from Supabase Edge Function (if available)
+  if (API_URL && storeId) {
+    fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storeId, action: "get_config" })
+    })
+    .then(async res => {
+      const text = await res.text();
+      console.log("Config load status:", res.status);
+      try {
+        const config = JSON.parse(text);
+        console.log("Widget config:", config);
+      } catch (e) {
+        // Response body is not JSON or config parsing failed; ignore gracefully.
+      }
+    })
+    .catch(err => {
+      console.error("Failed to load widget config:", err);
+    });
+  }
   
   const shadow = wrapper.attachShadow({ mode: "open" }); // Create shadow DOM
 
@@ -1730,6 +1749,9 @@
             const isNotInvalid = !phoneInput.classList.contains("invalid");
             
             if (isValidLength && isValidPattern && isNotInvalid) {
+              // Persist current customer phone (digits only) for backend calls
+              currentCustomerPhone = phoneNumber;
+
               // Phone number is valid, open chat detail directly (individual chat screen)
               // Clear phone input when leaving home screen
               if (phoneInput) {
@@ -1900,6 +1922,9 @@
             const isNotInvalid = !phoneInput.classList.contains("invalid");
             
             if (isValidLength && isValidPattern && isNotInvalid) {
+              // Persist current customer phone (digits only) for backend calls
+              currentCustomerPhone = phoneNumber;
+
               // Phone number is valid, open chat detail directly (individual chat screen)
               // Clear phone input when leaving home screen
               if (phoneInput) {
@@ -2136,6 +2161,10 @@
           goBackToMessageList();
           // Check and update empty state
           checkAndUpdateEmptyState();
+          // Load conversation history for this customer (if phone known)
+          if (currentCustomerPhone) {
+            loadConversationHistory();
+          }
         }
       }
 
@@ -2164,6 +2193,11 @@
           phoneInput.classList.remove("valid", "invalid");
         }
         
+        // Track current conversation for backend calls
+        if (messageId) {
+          currentConversationId = messageId;
+        }
+
         // Hide message list container
         if (mainMessageContainer) mainMessageContainer.style.display = "none";
         // Show message detail container
@@ -2180,11 +2214,17 @@
           updateLastMessageTimestamp();
         }
         
-        // Scroll to bottom of messages
-        if (messageDetailMessages) {
-          setTimeout(() => {
-            messageDetailMessages.scrollTop = messageDetailMessages.scrollHeight;
-          }, 100);
+        // Load messages for this conversation from backend
+        const phone = getEffectivePhone();
+        if (phone && currentConversationId) {
+          loadConversationMessages(phone, currentConversationId);
+        } else {
+          // Scroll to bottom of existing messages
+          if (messageDetailMessages) {
+            setTimeout(() => {
+              messageDetailMessages.scrollTop = messageDetailMessages.scrollHeight;
+            }, 100);
+          }
         }
       }
 
@@ -2454,6 +2494,49 @@
       }
 
 
+      // Helper to get the current customer's phone number (digits only)
+      function getEffectivePhone() {
+        if (currentCustomerPhone) return currentCustomerPhone;
+        if (!phoneInput) return null;
+        const digits = phoneInput.value.trim().replace(/\D/g, "");
+        return digits || null;
+      }
+
+      // Helper to call the Supabase chatbot API with common settings
+      function postToChatbotApi(body) {
+        if (!API_URL || !storeId) {
+          return Promise.reject(new Error("Missing API_URL or storeId"));
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+        const fullBody = Object.assign({ storeId }, body || {});
+
+        return fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(fullBody),
+          signal: controller.signal
+        })
+        .then(async (res) => {
+          const text = await res.text();
+          clearTimeout(timeoutId);
+          let data = {};
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch (e) {
+            // Non-JSON response; keep data as empty object
+          }
+          return { res, data };
+        })
+        .catch((err) => {
+          clearTimeout(timeoutId);
+          throw err;
+        });
+      }
+
+
       // Function to update the last message timestamp
       function updateLastMessageTimestamp() {
         if (!messageDetailMessages) return;
@@ -2585,7 +2668,7 @@
       // MESSAGE SENDING FUNCTIONALITY
       // ========================================
       // Handle sending messages in detail chat with validation and bot responses
-      function sendDetailMessage() {
+      async function sendDetailMessage() {
         if (!messageDetailInput || !messageDetailSendBtn) return;
         
         // Don't send if button is inactive
@@ -2649,15 +2732,38 @@
             addDetailMessageWithFile("شكراً لك! تم استلام الملف.", blobUrl, fileType, file.name, false, true);
           }, 1500);
         } else {
+          // Text-only message: send to Supabase chatbot API
           addDetailMessage(message, true, false);
           messageDetailInput.value = "";
           if (typeof hideFilePreview === "function") hideFilePreview();
           autoResizeTextarea();
           toggleMessageDetailSendButtonState();
+
+          const phone = getEffectivePhone();
           showLoadingIndicator();
-          setTimeout(() => {
-            addDetailMessage("شكراً لك! سأقوم بالرد عليك قريباً.", false, true);
-          }, 1500);
+
+          try {
+            const { data } = await postToChatbotApi({
+              message,
+              phone: phone || undefined,
+              conversationId: currentConversationId || undefined
+            });
+
+            if (data && (data.conversationId || data.conversation_id)) {
+              currentConversationId = data.conversationId || data.conversation_id;
+            }
+
+            const replyText =
+              (data && (data.message || data.reply || data.response)) ||
+              "شكراً لك! سأقوم بالرد عليك قريباً.";
+
+            removeLoadingIndicator();
+            addDetailMessage(replyText, false, true);
+          } catch (error) {
+            console.error("Chatbot API error:", error);
+            removeLoadingIndicator();
+            addDetailMessage("عذراً، حدث خطأ مؤقت. حاول مرة أخرى بعد قليل.", false, true);
+          }
         }
       }
 
@@ -3753,6 +3859,122 @@
           noMessagesEmptyState.style.display = "flex";
         }
       }
+
+      // Load conversation history from backend into the message list
+      function loadConversationHistory() {
+        if (!messageContainer) return;
+
+        const phone = getEffectivePhone();
+        if (!phone) return;
+
+        // Optional: clear existing items before loading
+        const existingItems = messageContainer.querySelectorAll(".message-item");
+        existingItems.forEach(item => item.remove());
+
+        // Keep empty state visible until we know if there are conversations
+        checkAndUpdateEmptyState();
+
+        postToChatbotApi({
+          action: "get_history",
+          phone
+        })
+        .then(({ data }) => {
+          const conversations = Array.isArray(data && data.conversations)
+            ? data.conversations
+            : [];
+
+          conversations.forEach((conv) => {
+            const convId = conv.id || conv.conversationId || conv.conversation_id;
+            if (!convId) return;
+
+            const lastMessage =
+              conv.last_message ||
+              conv.lastMessage ||
+              conv.preview ||
+              conv.summary ||
+              "محادثة بدون عنوان";
+
+            const createdAt =
+              conv.created_at ||
+              conv.createdAt ||
+              conv.last_message_at ||
+              conv.updated_at ||
+              null;
+
+            const item = document.createElement("div");
+            item.className = "message-item";
+            item.setAttribute("data-message-id", String(convId));
+
+            const content = document.createElement("div");
+            content.className = "message-item-content";
+
+            const title = document.createElement("p");
+            title.className = "message-item-title";
+            title.textContent = lastMessage;
+
+            content.appendChild(title);
+
+            if (createdAt) {
+              const meta = document.createElement("p");
+              meta.className = "message-item-meta";
+              meta.textContent = createdAt;
+              content.appendChild(meta);
+            }
+
+            item.appendChild(content);
+            messageContainer.appendChild(item);
+          });
+
+          attachMessageItemHandlers();
+          checkAndUpdateEmptyState();
+        })
+        .catch((err) => {
+          console.error("Failed to load conversation history:", err);
+        });
+      }
+
+      // Load messages for a specific conversation into the detail view
+      function loadConversationMessages(phone, conversationId) {
+        if (!messageDetailMessages) return;
+
+        // Clear current messages before loading
+        messageDetailMessages.innerHTML = "";
+
+        postToChatbotApi({
+          action: "get_messages",
+          phone,
+          conversationId
+        })
+        .then(({ data }) => {
+          const messages = Array.isArray(data && data.messages)
+            ? data.messages
+            : [];
+
+          messages.forEach((msg) => {
+            const isUser =
+              msg.sender === "user" ||
+              msg.sender === "customer" ||
+              msg.role === "user";
+
+            const text =
+              msg.text ||
+              msg.message ||
+              msg.content ||
+              "";
+
+            if (!text) return;
+            addDetailMessage(text, isUser, !isUser);
+          });
+
+          // Ensure we scroll to bottom after loading
+          setTimeout(() => {
+            messageDetailMessages.scrollTop = messageDetailMessages.scrollHeight;
+          }, 50);
+        })
+        .catch((err) => {
+          console.error("Failed to load conversation messages:", err);
+        });
+      }
       
       // Handle navigation back to message list from detail view
       function goBackToMessageList() {
@@ -3996,6 +4218,22 @@
             emoji.classList.add("selected");
             emoji.src = activeSrc;
             selectedRating = rating;
+
+            // Send rating to backend when user selects an emoji
+            const phone = getEffectivePhone();
+            if (!phone || !currentConversationId) return;
+
+            const ratingValue = Number(selectedRating || rating);
+            if (!ratingValue || ratingValue < 1 || ratingValue > 5) return;
+
+            postToChatbotApi({
+              message: `rating:${ratingValue}`,
+              phone,
+              conversationId: currentConversationId
+            })
+            .catch((err) => {
+              console.error("Failed to submit rating:", err);
+            });
           });
         });
       }
@@ -4173,8 +4411,24 @@
           
           // Show custom confirmation message before creating ticket
           showCustomConfirmation("هل أنت متأكد من رفع تذكرة؟", () => {
-            // Show rating screen after confirmation
-            showRatingScreen();
+            const phone = getEffectivePhone();
+            if (phone && currentConversationId) {
+              postToChatbotApi({
+                message: "ticket_request",
+                phone,
+                conversationId: currentConversationId
+              })
+              .catch((err) => {
+                console.error("Failed to create ticket:", err);
+              })
+              .finally(() => {
+                // Show rating screen after confirmation
+                showRatingScreen();
+              });
+            } else {
+              // If we don't have enough info for backend, still show rating screen
+              showRatingScreen();
+            }
           });
         });
         
@@ -4225,16 +4479,24 @@
       // MESSAGE ITEM CLICK HANDLERS FUNCTIONALITY
       // ========================================
       // Add click handlers to message items for opening detail view
-      messageItems.forEach(item => {
-        item.addEventListener("click", () => {
-          const messageId = item.getAttribute("data-message-id");
-          if (messageId) {
-            openMessageDetail(messageId);
-          }
+      function attachMessageItemHandlers() {
+        if (!messageContainer) return;
+        const items = messageContainer.querySelectorAll(".message-item");
+        items.forEach(item => {
+          if (item.dataset.clickBound === "1") return;
+          item.dataset.clickBound = "1";
+          item.style.cursor = "pointer";
+          item.addEventListener("click", () => {
+            const messageId = item.getAttribute("data-message-id");
+            if (messageId) {
+              openMessageDetail(messageId);
+            }
+          });
         });
-        // Make message items look clickable
-        item.style.cursor = "pointer";
-      });
+      }
+
+      // Attach handlers for any initial static items
+      attachMessageItemHandlers();
 
 
       // ========================================
