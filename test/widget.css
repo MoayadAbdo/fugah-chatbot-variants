@@ -1831,19 +1831,21 @@ body.chat-open #chatbot-widget-root {
  background-color: white !important;
  }
  
- /* CRITICAL: Remove inset property on mobile - it causes gap between chat and keyboard */
- /* inset: 0px forces element to stretch top-to-bottom, creating gap when keyboard opens */
- #chat-window.chat-window-open {
- inset: unset !important;
- inset-block: unset !important;
- inset-inline: unset !important;
- top: 0 !important;
- left: 0 !important;
- right: 0 !important;
- /* Don't set bottom - let height control the size */
- padding-bottom: 0 !important;
- margin-bottom: 0 !important;
- }
+/* CRITICAL: Remove inset property on mobile - it causes gap between chat and keyboard */
+/* inset: 0px forces element to stretch top-to-bottom, creating gap when keyboard opens */
+/* max-height: 100dvh ensures chat never exceeds visible viewport (keyboard, URL bar) */
+#chat-window.chat-window-open {
+inset: unset !important;
+inset-block: unset !important;
+inset-inline: unset !important;
+top: 0 !important;
+left: 0 !important;
+right: 0 !important;
+max-height: 100dvh !important; /* dynamic viewport - accounts for keyboard/URL bar */
+/* Don't set bottom - let height control the size */
+padding-bottom: 0 !important;
+margin-bottom: 0 !important;
+}
  
  /* Ensure input container has no bottom spacing on mobile */
  .message-detail-input-container {

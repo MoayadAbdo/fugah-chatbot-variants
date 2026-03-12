@@ -508,19 +508,15 @@
         // END DEVICE DETECTION FUNCTIONS
         // ========================================
 
-        // Function to get dynamic viewport height that accounts for browser bars
+        // Function to get dynamic viewport height that accounts for browser bars and keyboard
         const getDynamicViewportHeight = () => {
-          // Use window.innerHeight which accounts for browser UI bars
-          // This is more reliable than 100vh on mobile browsers
-          const height = window.innerHeight;
-          
-          // For iOS Safari, also check visualViewport if available
+          // On iOS Safari, window.innerHeight does NOT shrink when the keyboard opens.
+          // visualViewport.height DOES reflect the actual visible area.
+          // Use visualViewport.height when available for correct mobile/keyboard behavior.
           if (window.visualViewport && window.visualViewport.height) {
-            // Use the larger value to ensure full coverage
-            return Math.max(height, window.visualViewport.height);
+            return window.visualViewport.height;
           }
-          
-          return height;
+          return window.innerHeight;
         };
 
         // ========================================
@@ -556,23 +552,18 @@
               if (window.visualViewport) {
                 const viewportHeight = window.visualViewport.height;
                 const viewportOffsetTop = window.visualViewport.offsetTop || 0;
+                // Keyboard is open when viewport shrinks (iOS) or offsetTop > 0 (Android)
+                const keyboardLikelyOpen = viewportOffsetTop > 0 || viewportHeight < window.innerHeight * 0.85;
                 
-                // When keyboard is open, visualViewport.offsetTop will be > 0
-                if (viewportOffsetTop > 0) {
-                  // Keyboard is open - use window.innerHeight which is most accurate
-                  // window.innerHeight gives the actual visible area above keyboard
+                if (keyboardLikelyOpen) {
+                  // Use visualViewport.height - on iOS, innerHeight does NOT shrink when keyboard opens
                   const getKeyboardOpenHeight = () => {
                     return new Promise((resolve) => {
-                      // Get height immediately
-                      const immediateHeight = window.innerHeight;
-                      
-                      // Then check again after keyboard fully opens
+                      const immediateHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                       setTimeout(() => {
-                        const height1 = window.innerHeight;
-                        // Check one more time to ensure accuracy
+                        const height1 = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                         setTimeout(() => {
-                          const height2 = window.innerHeight;
-                          // Use the smallest value to ensure no gap
+                          const height2 = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                           const finalHeight = Math.min(immediateHeight, height1, height2);
                           resolve(finalHeight);
                         }, 200);
@@ -580,8 +571,7 @@
                     });
                   };
                   
-                  // Set initial height immediately using window.innerHeight (most accurate)
-                  const initialHeight = window.innerHeight;
+                  const initialHeight = viewportHeight;
                   
                   // Check if iOS for special handling
                   const isIOS = checkIsIOS();
@@ -619,7 +609,7 @@
                     // Tablet: Keep normal window position and size, only adjust height
                     // Tablets maintain their fixed position (bottom: 20px, right: 20px)
                     // Only reduce height to account for keyboard, keeping width at 390px
-                    const keyboardHeight = window.innerHeight;
+                    const keyboardHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                     // Calculate available height above keyboard
                     // For tablets, we want to keep the window in its normal position
                     // but reduce its height so input area is visible above keyboard
@@ -667,9 +657,9 @@
                       chatWindow.style.setProperty("margin-bottom", "0", "important");
                       console.log('Mobile - Keyboard open - final height set to:', finalHeight);
                       
-                      // Final check after a delay to ensure no gap
+                      // Final check after a delay to ensure no gap (use visualViewport on iOS)
                       setTimeout(() => {
-                        const finalCheck = window.innerHeight;
+                        const finalCheck = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                         const adjustedHeight = Math.max(finalCheck - 1, 300);
                         if (Math.abs(finalCheck - finalHeight) > 5) {
                           chatWindow.style.setProperty("height", `${adjustedHeight}px`, "important");
@@ -688,9 +678,9 @@
                       chatWindow.style.setProperty("max-height", `${maxTabletHeight}px`, "important");
                       console.log('Tablet - Keyboard open - height set to:', maxTabletHeight);
                       
-                      // Final check after a delay for tablets
+                      // Final check after a delay for tablets (use visualViewport on iOS)
                       setTimeout(() => {
-                        const finalCheck = window.innerHeight;
+                        const finalCheck = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                         const adjustedTabletHeight = Math.min(finalCheck - 40, 670);
                         if (Math.abs(finalCheck - correctHeight) > 5) {
                           chatWindow.style.setProperty("height", `${adjustedTabletHeight}px`, "important");
