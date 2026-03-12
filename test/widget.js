@@ -67,6 +67,22 @@
   
   const shadow = wrapper.attachShadow({ mode: "open" }); // Create shadow DOM
 
+  // ========================================
+  // iOS VIEWPORT HEIGHT CSS VARIABLE (--vh)
+  // ========================================
+  // Set --vh on document root for correct height when iOS keyboard opens.
+  // visualViewport.height reflects actual visible area; innerHeight does not.
+  const updateViewportHeightVar = () => {
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    document.documentElement.style.setProperty("--vh", `${vh}px`);
+  };
+  updateViewportHeightVar();
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", updateViewportHeightVar, { passive: true });
+    window.visualViewport.addEventListener("scroll", updateViewportHeightVar, { passive: true });
+  }
+  window.addEventListener("resize", updateViewportHeightVar);
+  window.addEventListener("orientationchange", updateViewportHeightVar);
 
   // ========================================
   // END SHADOW DOM SETUP FUNCTIONALITY
@@ -583,15 +599,17 @@
                     // ========================================
                     // MOBILE KEYBOARD HANDLING (max-width: 767px)
                     // ========================================
-                    // Mobile: Fullscreen behavior - chat window takes full viewport
-                    // CRITICAL: Remove inset and bottom to prevent gap - only use top positioning
+                    // Use --vh CSS variable (updated by visualViewport) for correct height
+                    // Pin to bottom so input stays visible above keyboard
+                    updateViewportHeightVar();
                     chatWindow.style.setProperty("inset", "unset", "important");
                     chatWindow.style.removeProperty("inset");
-                    chatWindow.style.removeProperty("bottom"); // Don't set bottom - causes gap
-                    chatWindow.style.setProperty("top", "0", "important");
+                    chatWindow.style.removeProperty("top");
+                    chatWindow.style.setProperty("position", "fixed", "important");
+                    chatWindow.style.setProperty("bottom", "0", "important");
                     chatWindow.style.setProperty("left", "0", "important");
                     chatWindow.style.setProperty("right", "0", "important");
-                    chatWindow.style.setProperty("height", `${initialHeight}px`, "important");
+                    chatWindow.style.setProperty("height", "var(--vh, 100dvh)", "important");
                     chatWindow.style.setProperty("width", "100vw", "important");
                     
                     // ========================================
@@ -646,12 +664,14 @@
                         }
                       }
                       
-                      // Remove inset again when updating height (browser may regenerate it)
+                      // Update --vh for CSS; keep bottom:0 positioning
+                      document.documentElement.style.setProperty("--vh", `${finalHeight}px`);
                       chatWindow.style.setProperty("inset", "unset", "important");
                       chatWindow.style.removeProperty("inset");
-                      chatWindow.style.removeProperty("bottom");
-                      chatWindow.style.setProperty("height", `${finalHeight}px`, "important");
-                      chatWindow.style.setProperty("max-height", `${finalHeight}px`, "important");
+                      chatWindow.style.removeProperty("top");
+                      chatWindow.style.setProperty("bottom", "0", "important");
+                      chatWindow.style.setProperty("height", "var(--vh, 100dvh)", "important");
+                      chatWindow.style.setProperty("max-height", "var(--vh, 100dvh)", "important");
                       // Ensure no bottom spacing
                       chatWindow.style.setProperty("padding-bottom", "0", "important");
                       chatWindow.style.setProperty("margin-bottom", "0", "important");
@@ -662,9 +682,8 @@
                         const finalCheck = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                         const adjustedHeight = Math.max(finalCheck - 1, 300);
                         if (Math.abs(finalCheck - finalHeight) > 5) {
-                          chatWindow.style.setProperty("height", `${adjustedHeight}px`, "important");
-                          chatWindow.style.setProperty("max-height", `${adjustedHeight}px`, "important");
-                          console.log('Mobile - Keyboard open - adjusted height to:', adjustedHeight);
+                          document.documentElement.style.setProperty("--vh", `${adjustedHeight}px`);
+                          console.log('Mobile - Keyboard open - adjusted --vh to:', adjustedHeight);
                         }
                       }, 100);
                     } else if (isTablet) {
@@ -697,17 +716,18 @@
                   // KEYBOARD CLOSED - Restore normal sizing
                   // ========================================
                   if (isMobile) {
-                    // Mobile: Restore fullscreen viewport
-                    const dynamicHeight = getDynamicViewportHeight();
-                    // Remove inset to prevent browser auto-generation
+                    // Mobile: Use --vh for fullscreen; pin to bottom for consistency
+                    updateViewportHeightVar();
                     chatWindow.style.setProperty("inset", "unset", "important");
                     chatWindow.style.removeProperty("inset");
-                    chatWindow.style.setProperty("top", "0", "important");
+                    chatWindow.style.removeProperty("top");
+                    chatWindow.style.setProperty("position", "fixed", "important");
+                    chatWindow.style.setProperty("bottom", "0", "important");
                     chatWindow.style.setProperty("left", "0", "important");
                     chatWindow.style.setProperty("right", "0", "important");
-                    chatWindow.style.setProperty("bottom", "0", "important");
                     chatWindow.style.setProperty("width", "100vw", "important");
-                    chatWindow.style.setProperty("height", `${dynamicHeight}px`, "important");
+                    chatWindow.style.setProperty("height", "var(--vh, 100dvh)", "important");
+                    chatWindow.style.removeProperty("max-height");
                     
                     // ========================================
                     // iOS-SPECIFIC: Show footer again when keyboard closes
@@ -738,17 +758,16 @@
                 // ========================================
                 // FALLBACK: Browsers without visualViewport support
                 // ========================================
-                // Use window.innerHeight as fallback for both mobile and tablets
-                const dynamicHeight = getDynamicViewportHeight();
                 const isMobile = checkIsMobile();
                 const isTablet = checkIsTablet();
                 
                 if (isMobile) {
-                  // Mobile fallback: fullscreen
-                  chatWindow.style.setProperty("height", `${dynamicHeight}px`, "important");
-                  chatWindow.style.setProperty("top", "0", "important");
+                  // Mobile fallback: use innerHeight for --vh
+                  const h = window.innerHeight;
+                  document.documentElement.style.setProperty("--vh", `${h}px`);
                   chatWindow.style.setProperty("bottom", "0", "important");
-                  console.log('Mobile fallback - Updated height to:', dynamicHeight);
+                  chatWindow.style.setProperty("height", "var(--vh, 100dvh)", "important");
+                  console.log('Mobile fallback - Updated --vh to:', h);
                 } else if (isTablet) {
                   // Tablet fallback: normal size
                   chatWindow.style.setProperty("height", "670px", "important");
@@ -869,110 +888,34 @@
             // Make chat-window fullscreen with no border-radius and full height (mobile only)
             console.log('Setting fullscreen styles');
             
-            // Position chat window based on visualViewport (accounts for keyboard)
+            // Position chat window using --vh (updated by visualViewport); pin to bottom for iOS
             const positionChatWindow = () => {
-              if (window.visualViewport) {
-                const viewportHeight = window.visualViewport.height;
-                const viewportOffsetTop = window.visualViewport.offsetTop || 0;
-                
-                // When keyboard is open, visualViewport.offsetTop will be > 0
-                if (viewportOffsetTop > 0) {
-                  // Keyboard is open - use window.innerHeight which is most accurate
-                  // window.innerHeight gives the actual visible area above keyboard
-                  const getKeyboardOpenHeight = () => {
-                    return new Promise((resolve) => {
-                      // Get height immediately
-                      const immediateHeight = window.innerHeight;
-                      
-                      // Then check again after keyboard fully opens
-                      setTimeout(() => {
-                        const height1 = window.innerHeight;
-                        // Check one more time to ensure accuracy
-                        setTimeout(() => {
-                          const height2 = window.innerHeight;
-                          // Use the smallest value to ensure no gap
-                          const finalHeight = Math.min(immediateHeight, height1, height2);
-                          resolve(finalHeight);
-                        }, 200);
-                      }, 300);
-                    });
-                  };
-                  
-                  // Set initial height immediately using window.innerHeight (most accurate)
-                  // Subtract 1px to account for any rounding/border issues and ensure no gap
-                  const initialHeight = Math.max(window.innerHeight - 1, 300);
-                  
-                  // CRITICAL: Remove inset and bottom to prevent gap - only use top positioning
-                  chatWindow.style.setProperty("inset", "unset", "important");
-                  chatWindow.style.removeProperty("inset");
-                  chatWindow.style.removeProperty("bottom"); // Don't set bottom - causes gap
-                  chatWindow.style.setProperty("top", "0", "important");
-                  chatWindow.style.setProperty("left", "0", "important");
-                  chatWindow.style.setProperty("right", "0", "important");
-                  chatWindow.style.setProperty("height", `${initialHeight}px`, "important");
-                  chatWindow.style.setProperty("width", "100vw", "important");
-                  chatWindow.style.setProperty("max-height", `${initialHeight}px`, "important");
-                  // Ensure no bottom spacing
-                  chatWindow.style.setProperty("padding-bottom", "0", "important");
-                  chatWindow.style.setProperty("margin-bottom", "0", "important");
-                  
-                  // Update to correct height after keyboard fully opens (fixes first-time gap)
-                  getKeyboardOpenHeight().then((correctHeight) => {
-                    // Subtract 1px to ensure no gap (accounts for rounding/borders)
-                    const finalHeight = Math.max(correctHeight - 1, 300);
-                    
-                    // Remove inset again when updating height (browser may regenerate it)
-                    chatWindow.style.setProperty("inset", "unset", "important");
-                    chatWindow.style.removeProperty("inset");
-                    chatWindow.style.removeProperty("bottom");
-                    chatWindow.style.setProperty("height", `${finalHeight}px`, "important");
-                    chatWindow.style.setProperty("max-height", `${finalHeight}px`, "important");
-                    // Ensure no bottom spacing
-                    chatWindow.style.setProperty("padding-bottom", "0", "important");
-                    chatWindow.style.setProperty("margin-bottom", "0", "important");
-                    
-                    // Final check after a delay to ensure no gap
-                    setTimeout(() => {
-                      const finalCheck = window.innerHeight;
-                      const adjustedHeight = Math.max(finalCheck - 1, 300);
-                      if (Math.abs(finalCheck - finalHeight) > 5) {
-                        chatWindow.style.setProperty("height", `${adjustedHeight}px`, "important");
-                        chatWindow.style.setProperty("max-height", `${adjustedHeight}px`, "important");
-                      }
-                    }, 100);
-                  });
-                } else {
-                  // Keyboard is closed - use full viewport
-                  const dynamicHeight = getDynamicViewportHeight();
-                  // Remove inset to prevent browser auto-generation
-                  chatWindow.style.setProperty("inset", "unset", "important");
-                  chatWindow.style.removeProperty("inset");
-                  chatWindow.style.setProperty("top", "0", "important");
-                  chatWindow.style.setProperty("left", "0", "important");
-                  chatWindow.style.setProperty("right", "0", "important");
-                  chatWindow.style.setProperty("bottom", "0", "important");
-                  chatWindow.style.setProperty("width", "100vw", "important");
-                  chatWindow.style.setProperty("height", `${dynamicHeight}px`, "important");
-                }
-              } else {
-                // Fallback for browsers without visualViewport support
-                const dynamicHeight = getDynamicViewportHeight();
-                chatWindow.style.setProperty("top", "0", "important");
-                chatWindow.style.setProperty("height", `${dynamicHeight}px`, "important");
-                chatWindow.style.setProperty("bottom", "0", "important");
-              }
+              updateViewportHeightVar();
+              chatWindow.style.setProperty("position", "fixed", "important");
+              chatWindow.style.setProperty("inset", "unset", "important");
+              chatWindow.style.removeProperty("inset");
+              chatWindow.style.removeProperty("top");
+              chatWindow.style.setProperty("bottom", "0", "important");
+              chatWindow.style.setProperty("left", "0", "important");
+              chatWindow.style.setProperty("right", "0", "important");
+              chatWindow.style.setProperty("width", "100vw", "important");
+              chatWindow.style.setProperty("height", "var(--vh, 100dvh)", "important");
+              chatWindow.style.setProperty("max-height", "var(--vh, 100dvh)", "important");
+              chatWindow.style.setProperty("padding-bottom", "0", "important");
+              chatWindow.style.setProperty("margin-bottom", "0", "important");
             };
             
             chatWindow.style.setProperty("position", "fixed", "important");
-            // Remove inset to prevent gap - browser auto-generates it from top/left/right/bottom
             chatWindow.style.setProperty("inset", "unset", "important");
             chatWindow.style.removeProperty("inset");
-            chatWindow.style.setProperty("top", "0", "important");
+            chatWindow.style.removeProperty("top");
+            chatWindow.style.setProperty("bottom", "0", "important");
             chatWindow.style.setProperty("left", "0", "important");
             chatWindow.style.setProperty("right", "0", "important");
             chatWindow.style.setProperty("width", "100vw", "important");
             chatWindow.style.setProperty("max-width", "none", "important");
-            chatWindow.style.setProperty("max-height", "none", "important");
+            chatWindow.style.setProperty("height", "var(--vh, 100dvh)", "important");
+            chatWindow.style.setProperty("max-height", "var(--vh, 100dvh)", "important");
             chatWindow.style.setProperty("border-radius", "0", "important");
             chatWindow.style.setProperty("padding", "0", "important");
             chatWindow.style.setProperty("margin", "0", "important");

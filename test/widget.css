@@ -1831,32 +1831,30 @@ body.chat-open #chatbot-widget-root {
  background-color: white !important;
  }
  
-/* CRITICAL: Remove inset property on mobile - it causes gap between chat and keyboard */
-/* inset: 0px forces element to stretch top-to-bottom, creating gap when keyboard opens */
-/* max-height: 100dvh ensures chat never exceeds visible viewport (keyboard, URL bar) */
+/* CRITICAL: iOS keyboard layout - use --vh (set by JS from visualViewport), pin to bottom */
 #chat-window.chat-window-open {
 inset: unset !important;
 inset-block: unset !important;
 inset-inline: unset !important;
-top: 0 !important;
+top: auto !important;
+bottom: 0 !important;
 left: 0 !important;
 right: 0 !important;
-max-height: 100dvh !important; /* dynamic viewport - accounts for keyboard/URL bar */
-/* Don't set bottom - let height control the size */
+height: var(--vh, 100dvh) !important;
+max-height: var(--vh, 100dvh) !important;
 padding-bottom: 0 !important;
 margin-bottom: 0 !important;
 }
  
- /* Ensure input container has no bottom spacing on mobile */
- .message-detail-input-container {
- padding-bottom: 0 !important;
+ /* Footer: safe-area for home indicator */
+ #fugah-footer {
+ padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
  margin-bottom: 0 !important;
  }
  
- /* Ensure footer has no bottom spacing on mobile */
- #fugah-footer {
- padding-bottom: 0 !important;
- margin-bottom: 0 !important;
+ /* Input container: safe-area so input stays above home indicator */
+ .message-detail-input-container {
+ padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
  }
  
  /* Remove blue tap highlight on mobile for all interactive elements */
