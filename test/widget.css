@@ -16,6 +16,13 @@ html.chat-open {
 body.chat-open * {
  overscroll-behavior: none !important;
 }
+
+/* iOS/iPhone: Allow widget to scroll - override body's touch-action: none */
+/* Without this, touches inside the widget would be blocked and background would scroll */
+body.chat-open #chatbot-widget-root {
+ touch-action: auto !important;
+}
+
 /* ========================================
  END PREVENT BACKGROUND SCROLLING
  ======================================== */
@@ -1527,7 +1534,9 @@ body.chat-open * {
  box-sizing: border-box;
  overflow-y: auto;
  background-color: white;
- 
+ /* iOS: allow vertical touch scroll, momentum scrolling */
+ touch-action: pan-y !important;
+ -webkit-overflow-scrolling: touch !important;
 }
 
 .flex-1{
@@ -1889,6 +1898,9 @@ body.chat-open * {
  flex-direction: column;
  gap: 24px;
  box-sizing: border-box;
+ /* iOS: allow vertical touch scroll, momentum scrolling */
+ touch-action: pan-y !important;
+ -webkit-overflow-scrolling: touch !important;
 }
 
 .message-detail-messages::-webkit-scrollbar {
@@ -2145,10 +2157,18 @@ body.chat-open * {
 }
 
 /* Mobile: Remove sticky positioning to prevent white space above input when keyboard appears */
+/* Mobile: font-size 16px on input prevents iOS from zooming the viewport when focusing */
 @media screen and (max-width: 767px) {
  .message-detail-input-container {
  position: relative !important;
  bottom: auto !important;
+ }
+ .message-detail-input {
+ font-size: 16px !important;
+ touch-action: manipulation !important; /* Prevent double-tap zoom on iOS */
+ }
+ .message-detail-input::placeholder {
+ font-size: 16px !important;
  }
 }
 

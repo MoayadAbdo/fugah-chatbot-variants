@@ -417,9 +417,11 @@
           // This is especially important for iOS Safari which can still scroll with touch gestures
           const preventBackgroundScroll = (e) => {
             // Only prevent if touch is outside the chat window
-            // Note: chatWindow is in shadow DOM, so we check if target is inside the wrapper
+            // Use composedPath() for reliable shadow DOM detection on iOS
             const widgetRoot = document.querySelector('#chatbot-widget-root');
-            if (widgetRoot && !widgetRoot.contains(e.target)) {
+            if (!widgetRoot) return;
+            const insideWidget = e.composedPath ? e.composedPath().includes(widgetRoot) : widgetRoot.contains(e.target);
+            if (!insideWidget) {
               e.preventDefault();
               e.stopPropagation();
               return false;
