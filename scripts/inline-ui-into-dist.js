@@ -25,18 +25,30 @@ const inlined = JSON.stringify(uiHtml);
 
 let widgetJs = fs.readFileSync(widgetPath, "utf8");
 
-// Match: fetch(WIDGET_BASE + "ui.html").then(res => res.text()).then(html => {
+// Pattern A: placeholder loader block in test/widget.js
+const placeholderBlock = /Promise\.resolve\s*\(\s*"__UI_HTML_INLINED__"\s*\)\s*\.then\s*\(\s*html\s*=>\s*\{\s*if\s*\(\s*html\s*===\s*"__UI_HTML_INLINED__"\s*\)\s*\{\s*return\s+fetch\s*\([^)]+\)\.then\s*\(\s*r\s*=>\s*r\.text\s*\(\s*\)\s*\)\s*;\s*\}\s*return\s+html\s*;\s*\}\s*\)\s*\.then\s*\(\s*html\s*=>\s*\{/;
+// Pattern B: legacy direct fetch block
 const fetchPattern = /fetch\s*\(\s*WIDGET_BASE\s*\+\s*"ui\.html"\s*\)\s*\.then\s*\(\s*res\s*=>\s*res\.text\s*\(\s*\)\s*\)\s*\.then\s*\(\s*html\s*=>\s*\{/;
 
-if (!fetchPattern.test(widgetJs)) {
-  console.error("inline-ui-into-dist: Could not find fetch(ui.html) pattern in widget.js");
+if (placeholderBlock.test(widgetJs)) {
+  widgetJs = widgetJs.replace(
+    placeholderBlock,
+    "Promise.resolve(" + inlined + ").then(html => {"
+  );
+} else if (fetchPattern.test(widgetJs)) {
+  widgetJs = widgetJs.replace(
+    fetchPattern,
+    "Promise.resolve(" + inlined + ").then(html => {"
+  );
+} else {
+  // Already inlined by prebuild/public pipeline
+  if (widgetJs.includes("FUGAH CHATBOT WIDGET - HTML TEMPLATE")) {
+    console.log("inline-ui-into-dist: ui already inlined in dist/widget.js");
+    process.exit(0);
+  }
+  console.error("inline-ui-into-dist: Could not find inlinable ui block in widget.js");
   process.exit(1);
 }
-
-widgetJs = widgetJs.replace(
-  fetchPattern,
-  "Promise.resolve(" + inlined + ").then(html => {"
-);
 
 fs.writeFileSync(widgetPath, widgetJs);
 console.log("inline-ui-into-dist: ui.html inlined into dist/widget.js (no fetch needed)");

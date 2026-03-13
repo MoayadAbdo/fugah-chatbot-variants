@@ -10,8 +10,11 @@
   // ========================================
   // Read store identifier from script tag data attribute
   const scriptTag = document.currentScript;
+  const urlParams = new URLSearchParams(window.location.search || "");
+  const urlStoreId = urlParams.get("store_id") || urlParams.get("identifier");
   const storeId = scriptTag.getAttribute("data-store-url")
     || scriptTag.getAttribute("data-store-id")
+    || urlStoreId
     || "demo-store";
   // Load CSS/HTML/assets from script origin (or data-widget-base) so embed on Salla works
   const explicitBase = scriptTag.getAttribute("data-widget-base");
@@ -50,9 +53,6 @@
   wrapper.setAttribute("dir", "ltr"); // isolate from page: widget is LTR unless data-rtl says otherwise
   wrapper.setAttribute("data-position", normalizePosition(scriptPosition));
   document.body.appendChild(wrapper);
-  // #region agent log
-  try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:init',message:'widget init',data:{inIframe:window.self!==window.top},hypothesisId:'H5',timestamp:Date.now()})}).catch(()=>{});}catch(e){}
-  // #endregion
 
   // Initial config load from Supabase Edge Function (if available)
   if (API_URL && storeId) {
@@ -80,6 +80,11 @@
   
   const shadow = wrapper.attachShadow({ mode: "open" }); // Create shadow DOM
 
+  // Critical fallback styles: show launcher immediately while full CSS loads.
+  const criticalStyle = document.createElement("style");
+  criticalStyle.textContent = "#chat-bubble{position:fixed;bottom:20px;right:20px;width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;background:#222}#chat-bubble img{width:100%;height:100%;object-fit:cover}:host([data-position=\"bottom-left\"]) #chat-bubble{left:20px;right:auto}";
+  shadow.appendChild(criticalStyle);
+
   // ========================================
   // iOS VIEWPORT HEIGHT CSS VARIABLE (--vh)
   // ========================================
@@ -88,9 +93,6 @@
   const updateViewportHeightVar = () => {
     const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
     document.documentElement.style.setProperty("--vh", `${vh}px`);
-    // #region agent log
-    try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:updateViewportHeightVar',message:'--vh updated',data:{vh,innerHeight:window.innerHeight,vvHeight:window.visualViewport?window.visualViewport.height:null,vvOffsetTop:window.visualViewport?window.visualViewport.offsetTop:null},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});}catch(e){}
-    // #endregion
   };
   updateViewportHeightVar();
   if (window.visualViewport) {
@@ -123,9 +125,15 @@
   // ========================================
   // HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
   // ========================================
-  // Load HTML template and initialize all DOM elements
-  fetch(WIDGET_BASE + "ui.html")
-        .then(res => res.text())
+  // Load HTML template and initialize all DOM elements.
+  // Build pipeline replaces "__UI_HTML_INLINED__" with actual HTML for zero extra request startup.
+  Promise.resolve("__UI_HTML_INLINED__")
+        .then(html => {
+          if (html === "__UI_HTML_INLINED__") {
+            return fetch(WIDGET_BASE + "ui.html").then(r => r.text());
+          }
+          return html;
+        })
         .then(html => {
       // Resolve relative asset URLs so they load from script origin (Salla/embed fix)
       if (WIDGET_BASE) html = html.replace(/src="\.\.\/assets\//g, "src=\"" + WIDGET_BASE + "assets/");
@@ -482,9 +490,6 @@
             const scrollableEls = scrollableSelectors.map(s => shadow.querySelector(s)).filter(Boolean);
             const onScrollable = scrollableEls.some(el => path.includes(el) || el.contains(e.target));
             const shouldPrevent = !insideWidget || (insideWidget && !onScrollable);
-            // #region agent log
-            if (e.type === 'touchmove') { try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:preventBackgroundScroll',message:'touchmove',data:{insideWidget,onScrollable,shouldPrevent,targetTag:e.target?e.target.tagName:null},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});}catch(e){} }
-            // #endregion
             if (shouldPrevent) {
               e.preventDefault();
               e.stopPropagation();
@@ -623,9 +628,6 @@
                 const viewportOffsetTop = window.visualViewport.offsetTop || 0;
                 // Keyboard is open when viewport shrinks (iOS) or offsetTop > 0 (Android)
                 const keyboardLikelyOpen = viewportOffsetTop > 0 || viewportHeight < window.innerHeight * 0.85;
-                // #region agent log
-                try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:mobileHeightUpdateHandler',message:'viewport check',data:{viewportHeight,viewportOffsetTop,innerHeight:window.innerHeight,keyboardLikelyOpen,isMobile:checkIsMobile()},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});}catch(e){}
-                // #endregion
                 if (keyboardLikelyOpen) {
                   // Use visualViewport.height - on iOS, innerHeight does NOT shrink when keyboard opens
                   const getKeyboardOpenHeight = () => {
@@ -674,9 +676,6 @@
                     // Only the input container will be visible above the keyboard
                     if (isIOS && fugahFooter) {
                       fugahFooter.style.setProperty("display", "none", "important");
-                      // #region agent log
-                      try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:footer hidden',message:'iOS footer hidden',data:{footerDisplay:fugahFooter?fugahFooter.style.display:null},hypothesisId:'H4',timestamp:Date.now()})}).catch(()=>{});}catch(e){}
-                      // #endregion
                     }
                   } else if (isTablet) {
                     // ========================================
@@ -3763,9 +3762,6 @@
 
         // Trigger height update when input is focused (keyboard opens) - fixes first-time gap
         messageDetailInput.addEventListener("focus", () => {
-          // #region agent log
-          try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:input focus',message:'message input focused',data:{vvHeight:window.visualViewport?window.visualViewport.height:null,innerHeight:window.innerHeight},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});}catch(e){}
-          // #endregion
           // iOS: Force 16px to prevent zoom (iOS zooms when input font-size < 16px)
           if (checkIsMobile()) {
             messageDetailInput.style.setProperty("font-size", "16px", "important");
