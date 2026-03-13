@@ -42,6 +42,9 @@
   wrapper.id = "chatbot-widget-root";
   wrapper.setAttribute("dir", "ltr"); // isolate from page: widget is LTR unless data-rtl says otherwise
   document.body.appendChild(wrapper);
+  // #region agent log
+  try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:init',message:'widget init',data:{inIframe:window.self!==window.top},hypothesisId:'H5',timestamp:Date.now()})}).catch(()=>{});}catch(e){}
+  // #endregion
 
   // Initial config load from Supabase Edge Function (if available)
   if (API_URL && storeId) {
@@ -75,6 +78,9 @@
   const updateViewportHeightVar = () => {
     const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
     document.documentElement.style.setProperty("--vh", `${vh}px`);
+    // #region agent log
+    try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:updateViewportHeightVar',message:'--vh updated',data:{vh,innerHeight:window.innerHeight,vvHeight:window.visualViewport?window.visualViewport.height:null,vvOffsetTop:window.visualViewport?window.visualViewport.offsetTop:null},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});}catch(e){}
+    // #endregion
   };
   updateViewportHeightVar();
   if (window.visualViewport) {
@@ -436,7 +442,11 @@
             // Use composedPath() for reliable shadow DOM detection on iOS
             const widgetRoot = document.querySelector('#chatbot-widget-root');
             if (!widgetRoot) return;
-            const insideWidget = e.composedPath ? e.composedPath().includes(widgetRoot) : widgetRoot.contains(e.target);
+            const path = e.composedPath ? e.composedPath() : [];
+            const insideWidget = path.length ? path.includes(widgetRoot) : widgetRoot.contains(e.target);
+            // #region agent log
+            if (e.type === 'touchmove') { try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:preventBackgroundScroll',message:'touchmove',data:{insideWidget,prevented:!insideWidget,targetTag:e.target?e.target.tagName:null,pathLen:path.length,inDoc:!!document.querySelector('#chatbot-widget-root')},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});}catch(e){} }
+            // #endregion
             if (!insideWidget) {
               e.preventDefault();
               e.stopPropagation();
@@ -570,7 +580,9 @@
                 const viewportOffsetTop = window.visualViewport.offsetTop || 0;
                 // Keyboard is open when viewport shrinks (iOS) or offsetTop > 0 (Android)
                 const keyboardLikelyOpen = viewportOffsetTop > 0 || viewportHeight < window.innerHeight * 0.85;
-                
+                // #region agent log
+                try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:mobileHeightUpdateHandler',message:'viewport check',data:{viewportHeight,viewportOffsetTop,innerHeight:window.innerHeight,keyboardLikelyOpen,isMobile:checkIsMobile()},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});}catch(e){}
+                // #endregion
                 if (keyboardLikelyOpen) {
                   // Use visualViewport.height - on iOS, innerHeight does NOT shrink when keyboard opens
                   const getKeyboardOpenHeight = () => {
@@ -619,6 +631,9 @@
                     // Only the input container will be visible above the keyboard
                     if (isIOS && fugahFooter) {
                       fugahFooter.style.setProperty("display", "none", "important");
+                      // #region agent log
+                      try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:footer hidden',message:'iOS footer hidden',data:{footerDisplay:fugahFooter?fugahFooter.style.display:null},hypothesisId:'H4',timestamp:Date.now()})}).catch(()=>{});}catch(e){}
+                      // #endregion
                     }
                   } else if (isTablet) {
                     // ========================================
@@ -3695,6 +3710,9 @@
 
         // Trigger height update when input is focused (keyboard opens) - fixes first-time gap
         messageDetailInput.addEventListener("focus", () => {
+          // #region agent log
+          try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:input focus',message:'message input focused',data:{vvHeight:window.visualViewport?window.visualViewport.height:null,innerHeight:window.innerHeight},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});}catch(e){}
+          // #endregion
           // ========================================
           // iOS-SPECIFIC: Hide footer when input is focused (keyboard opens)
           // ========================================
