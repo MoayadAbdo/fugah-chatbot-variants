@@ -1,0 +1,23 @@
+<!-- =============================================
+     Fugah Chatbot Widget - Zid Partner App
+     Embed snippet for merchant stores
+     =============================================
+     Usage:
+     1. Add this snippet in Zid Partner Dashboard:
+        Your App -> General Settings -> Add Snippet
+     2. Choose snippet placement (recommended: Footer / before </body>).
+     3. Keep src pointing to your hosted widget.js URL.
+     ============================================= -->
+
+<script>
+(function () {
+  var s = document.createElement("script");
+  s.src = "https://fugah-chatbot-variantsssz.vercel.app/widget.js";
+  s.charset = "UTF-8";
+  s.setAttribute("data-store-url", window.location.origin);
+  s.setAttribute("data-platform", "zid");
+  s.setAttribute("data-theme", "yellow");
+  s.setAttribute("data-position", "bottom-right");
+  document.head.appendChild(s);
+})();
+</script>
