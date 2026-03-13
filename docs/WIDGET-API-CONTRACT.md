@@ -15,7 +15,9 @@ This document describes the exact payloads the widget sends to your Supabase `ch
 
 Every request includes:
 
-- `storeId` – from `data-store-id` on the script tag (required)
+- `storeId` – from script tag store identifier (required):
+  - Salla: `data-store-id` (numeric/string store id)
+  - Zid: `data-store-url` (store origin URL, e.g. `https://c1n4mc.zid.store`)
 - `phone` – digits-only phone number (when available)
 - `conversationId` – UUID or string (when continuing a conversation)
 
@@ -34,6 +36,9 @@ Every request includes:
 ```
 
 **Backend must:**
+- Resolve store using `storeId`:
+  - If numeric/id-like: lookup by Salla `store_id`
+  - If URL-like: lookup by Zid `store_url`
 - Return widget config (theme, position, welcome message, etc.) or empty object.
 - No phone/conversation storage.
 

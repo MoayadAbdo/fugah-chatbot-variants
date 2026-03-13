@@ -8,9 +8,11 @@
   // ========================================
   // STORE ID CONFIGURATION FUNCTIONALITY
   // ========================================
-  // Read store ID from script tag data attribute
+  // Read store identifier from script tag data attribute
   const scriptTag = document.currentScript;
-  const storeId = scriptTag.getAttribute("data-store-id") || "demo-store";
+  const storeId = scriptTag.getAttribute("data-store-url")
+    || scriptTag.getAttribute("data-store-id")
+    || "demo-store";
   // Load CSS/HTML/assets from script origin (or data-widget-base) so embed on Salla works
   const explicitBase = scriptTag.getAttribute("data-widget-base");
   const scriptSrc = scriptTag?.src;
@@ -20,10 +22,15 @@
   const explicitApiUrl = scriptTag.getAttribute("data-api-url");
   const API_URL = (explicitApiUrl && explicitApiUrl.trim())
     || "https://pmzhsxlsnxvpzkiflxww.supabase.co/functions/v1/chatbot-api";
+  const scriptTheme = scriptTag.getAttribute("data-theme");
+  const scriptPosition = scriptTag.getAttribute("data-position");
+  const normalizePosition = (value) => value === "bottom-left" ? "bottom-left" : "bottom-right";
 
   // Conversation and customer state shared across widget
   let currentConversationId = null;
   let currentCustomerPhone = null;
+  let remoteWidgetConfig = {};
+  let applyRemoteConfig = null;
 
   console.log("Widget loaded for store:", storeId);
   console.log("Using chatbot API URL:", API_URL);
@@ -41,6 +48,7 @@
   const wrapper = document.createElement("div");
   wrapper.id = "chatbot-widget-root";
   wrapper.setAttribute("dir", "ltr"); // isolate from page: widget is LTR unless data-rtl says otherwise
+  wrapper.setAttribute("data-position", normalizePosition(scriptPosition));
   document.body.appendChild(wrapper);
   // #region agent log
   try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:init',message:'widget init',data:{inIframe:window.self!==window.top},hypothesisId:'H5',timestamp:Date.now()})}).catch(()=>{});}catch(e){}
@@ -58,6 +66,8 @@
       console.log("Config load status:", res.status);
       try {
         const config = JSON.parse(text);
+        if (config && typeof config === "object") remoteWidgetConfig = config;
+        if (typeof applyRemoteConfig === "function") applyRemoteConfig();
         console.log("Widget config:", config);
       } catch (e) {
         // Response body is not JSON or config parsing failed; ignore gracefully.
@@ -167,6 +177,24 @@
           const rtl = (scriptTag.getAttribute("data-rtl") || "").toLowerCase();
           const useRtl = rtl === "true" || rtl === "1" || rtl === "yes" || rtl === "ar";
           if (chatWindow) chatWindow.setAttribute("dir", useRtl ? "rtl" : "ltr");
+          const getResolvedPosition = () => normalizePosition(
+            (remoteWidgetConfig && remoteWidgetConfig.position)
+            || scriptPosition
+            || "bottom-right"
+          );
+          const applyWidgetPosition = () => {
+            const position = getResolvedPosition();
+            wrapper.setAttribute("data-position", position);
+            if (!chatWindow) return;
+            if (position === "bottom-left") {
+              chatWindow.style.setProperty("left", "20px", "important");
+              chatWindow.style.setProperty("right", "auto", "important");
+            } else {
+              chatWindow.style.setProperty("right", "20px", "important");
+              chatWindow.style.setProperty("left", "auto", "important");
+            }
+          };
+          applyWidgetPosition();
 
       // ========================================
       // END HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
@@ -667,10 +695,15 @@
                     // Keep normal tablet positioning (don't go fullscreen)
                     chatWindow.style.setProperty("position", "fixed", "important");
                     chatWindow.style.setProperty("bottom", "20px", "important");
-                    chatWindow.style.setProperty("right", "20px", "important");
                     chatWindow.style.setProperty("width", "390px", "important");
                     chatWindow.style.setProperty("top", "auto", "important");
-                    chatWindow.style.setProperty("left", "auto", "important");
+                    if (getResolvedPosition() === "bottom-left") {
+                      chatWindow.style.setProperty("left", "20px", "important");
+                      chatWindow.style.setProperty("right", "auto", "important");
+                    } else {
+                      chatWindow.style.setProperty("right", "20px", "important");
+                      chatWindow.style.setProperty("left", "auto", "important");
+                    }
                   }
                   
                   // Update to correct height after keyboard fully opens (fixes first-time gap)
@@ -778,9 +811,14 @@
                     chatWindow.style.setProperty("width", "390px", "important");
                     chatWindow.style.setProperty("position", "fixed", "important");
                     chatWindow.style.setProperty("bottom", "20px", "important");
-                    chatWindow.style.setProperty("right", "20px", "important");
                     chatWindow.style.setProperty("top", "auto", "important");
-                    chatWindow.style.setProperty("left", "auto", "important");
+                    if (getResolvedPosition() === "bottom-left") {
+                      chatWindow.style.setProperty("left", "20px", "important");
+                      chatWindow.style.setProperty("right", "auto", "important");
+                    } else {
+                      chatWindow.style.setProperty("right", "20px", "important");
+                      chatWindow.style.setProperty("left", "auto", "important");
+                    }
                     console.log('Tablet - Keyboard closed - restored to normal size');
                   }
                 }
@@ -4921,6 +4959,13 @@
       // ========================================
       // Expose theme changing function globally for external access
       window.changeChatbotTheme = changeTheme;
+      applyRemoteConfig = () => {
+        if (remoteWidgetConfig && remoteWidgetConfig.theme) {
+          changeTheme(remoteWidgetConfig.theme);
+        }
+        applyWidgetPosition();
+      };
+      applyRemoteConfig();
 
 
       // ========================================
@@ -4932,7 +4977,7 @@
       // INITIAL THEME SETUP FUNCTIONALITY
       // ========================================
       // Use our widget script tag (not querySelector) so we don't pick up another app's data-theme on Salla
-      const initialTheme = scriptTag.getAttribute('data-theme');
+      const initialTheme = remoteWidgetConfig.theme || scriptTheme;
       if (initialTheme) {
         setTimeout(() => {
           changeTheme(initialTheme);
