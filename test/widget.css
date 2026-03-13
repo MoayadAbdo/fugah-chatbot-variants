@@ -2157,17 +2157,19 @@ margin-bottom: 0 !important;
 }
 
 /* Mobile: Remove sticky positioning to prevent white space above input when keyboard appears */
-/* Mobile: font-size 16px on input prevents iOS from zooming the viewport when focusing */
+/* Mobile: font-size 16px prevents iOS zoom when focusing (iOS zooms if font-size < 16px) */
 @media screen and (max-width: 767px) {
  .message-detail-input-container {
  position: relative !important;
  bottom: auto !important;
  }
+ #message-detail-input,
  .message-detail-input {
  font-size: 16px !important;
- touch-action: manipulation !important; /* Prevent double-tap zoom on iOS */
+ touch-action: manipulation !important;
  }
- .message-detail-input::placeholder {
+ .message-detail-input::placeholder,
+ #message-detail-input::placeholder {
  font-size: 16px !important;
  }
 }

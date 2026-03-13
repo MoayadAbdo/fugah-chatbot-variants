@@ -431,6 +431,12 @@
           // Prevent scrolling via overflow only (position:fixed on body breaks background on Safari and others)
           document.body.style.overflow = 'hidden';
           document.documentElement.style.overflow = 'hidden';
+          // Lock Salla's scroll container if it uses a different element (e.g. #app, .main)
+          const scrollEl = document.scrollingElement || document.documentElement;
+          if (scrollEl && scrollEl !== document.body) {
+            scrollEl.style.overflow = 'hidden';
+            scrollEl.dataset.fugahScrollLock = '1';
+          }
           
           // ========================================
           // MOBILE-SPECIFIC: Additional touch scroll prevention
@@ -438,16 +444,20 @@
           // On mobile devices, add touch event listeners to prevent background scrolling
           // This is especially important for iOS Safari which can still scroll with touch gestures
           const preventBackgroundScroll = (e) => {
-            // Only prevent if touch is outside the chat window
-            // Use composedPath() for reliable shadow DOM detection on iOS
             const widgetRoot = document.querySelector('#chatbot-widget-root');
             if (!widgetRoot) return;
             const path = e.composedPath ? e.composedPath() : [];
             const insideWidget = path.length ? path.includes(widgetRoot) : widgetRoot.contains(e.target);
+            // When touch is inside widget but on non-scrollable area (header, input, footer),
+            // the browser scrolls the Salla page behind. Prevent that.
+            const scrollableSelectors = ['.message-detail-messages', '.main-message-container', '.country-list', '#rating-messages'];
+            const scrollableEls = scrollableSelectors.map(s => shadow.querySelector(s)).filter(Boolean);
+            const onScrollable = scrollableEls.some(el => path.includes(el) || el.contains(e.target));
+            const shouldPrevent = !insideWidget || (insideWidget && !onScrollable);
             // #region agent log
-            if (e.type === 'touchmove') { try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:preventBackgroundScroll',message:'touchmove',data:{insideWidget,prevented:!insideWidget,targetTag:e.target?e.target.tagName:null,pathLen:path.length,inDoc:!!document.querySelector('#chatbot-widget-root')},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});}catch(e){} }
+            if (e.type === 'touchmove') { try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:preventBackgroundScroll',message:'touchmove',data:{insideWidget,onScrollable,shouldPrevent,targetTag:e.target?e.target.tagName:null},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});}catch(e){} }
             // #endregion
-            if (!insideWidget) {
+            if (shouldPrevent) {
               e.preventDefault();
               e.stopPropagation();
               return false;
@@ -482,6 +492,11 @@
           
           document.body.style.overflow = '';
           document.documentElement.style.overflow = '';
+          const scrollEl = document.scrollingElement || document.documentElement;
+          if (scrollEl && scrollEl.dataset.fugahScrollLock === '1') {
+            scrollEl.style.overflow = '';
+            delete scrollEl.dataset.fugahScrollLock;
+          }
           window.scrollTo(0, scrollY);
           window.fugahChatScrollPosition = undefined;
         }
@@ -3713,6 +3728,10 @@
           // #region agent log
           try{fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',location:'widget.js:input focus',message:'message input focused',data:{vvHeight:window.visualViewport?window.visualViewport.height:null,innerHeight:window.innerHeight},hypothesisId:'H2',timestamp:Date.now()})}).catch(()=>{});}catch(e){}
           // #endregion
+          // iOS: Force 16px to prevent zoom (iOS zooms when input font-size < 16px)
+          if (checkIsMobile()) {
+            messageDetailInput.style.setProperty("font-size", "16px", "important");
+          }
           // ========================================
           // iOS-SPECIFIC: Hide footer when input is focused (keyboard opens)
           // ========================================
