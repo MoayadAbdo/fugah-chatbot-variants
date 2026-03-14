@@ -63,8 +63,7 @@
     if (!document.body) return 0;
     const vH = window.innerHeight || document.documentElement.clientHeight || 0;
     const vW = window.innerWidth || document.documentElement.clientWidth || 0;
-    // Accept bars that are at least 30% viewport width wide (product bars are always wide)
-    const minW = Math.max(80, Math.floor(vW * 0.3));
+    const minW = Math.max(60, Math.floor(vW * 0.25));
     let maxH = 0;
     const elements = document.body.querySelectorAll("*");
     for (const el of elements) {
@@ -74,9 +73,8 @@
       if (parseFloat(cs.opacity || "1") === 0) continue;
       if (cs.position !== "fixed" && cs.position !== "sticky") continue;
       const rect = el.getBoundingClientRect();
-      if (!rect || rect.width < minW || rect.height < 28 || rect.height > MAX_HOST_OVERLAY_HEIGHT) continue;
-      // Element must be visually touching the bottom of the viewport
-      if (rect.bottom < vH - 4) continue;
+      if (!rect || rect.width < minW || rect.height < 24 || rect.height > MAX_HOST_OVERLAY_HEIGHT) continue;
+      if (rect.bottom < vH - 8) continue;
       maxH = Math.max(maxH, rect.height);
     }
     return Math.min(maxH, MAX_HOST_OVERLAY_HEIGHT);
@@ -91,12 +89,18 @@
 
   // Compute and apply the correct bottom offset for bubble + chat window.
   // Priority: if keyboard is open → sit above keyboard; else → sit above host sticky bar.
+  // On narrow/touch screens use a minimum offset so we never overlap Zid/Salla buy bars
+  // even when getHostBottomBarHeight() misses (e.g. bar not fixed/sticky or not yet in DOM).
   const refreshWidgetBottomOffset = () => {
     const kbH = getKeyboardHeight();
     const barH = kbH > 0 ? 0 : getHostBottomBarHeight();
-    const nextOffset = WIDGET_SIDE_MARGIN + (kbH > 0 ? kbH : barH);
+    const vW = window.innerWidth || document.documentElement.clientWidth || 0;
+    const isNarrowOrTouch = (vW <= 480) || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+    const minBottom = isNarrowOrTouch ? 80 : WIDGET_SIDE_MARGIN;
+    const nextOffset = Math.max(minBottom, WIDGET_SIDE_MARGIN + (kbH > 0 ? kbH : barH));
     wrapper.style.setProperty(WIDGET_BOTTOM_OFFSET_VAR, `${nextOffset}px`);
   };
+  refreshWidgetBottomOffset();
 
   // Initial config load from Supabase Edge Function (if available)
   if (API_URL && storeId) {
@@ -3832,10 +3836,8 @@
 
         // Trigger height update when input is focused (keyboard opens) - fixes first-time gap
         messageDetailInput.addEventListener("focus", () => {
-          // iOS: Force 16px to prevent zoom (iOS zooms when input font-size < 16px)
-          if (checkIsMobile() || checkIsIOS()) {
-            messageDetailInput.style.setProperty("font-size", "16px", "important");
-          }
+          // iOS: Always force 16px on focus so page never zooms (Salla viewport can report wide; CSS may not match)
+          messageDetailInput.style.setProperty("font-size", "16px", "important");
           // ========================================
           // iOS-SPECIFIC: Hide footer when input is focused (keyboard opens)
           // ========================================

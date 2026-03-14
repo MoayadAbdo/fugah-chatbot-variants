@@ -2204,6 +2204,19 @@ margin-bottom: 0 !important;
  }
 }
 
+/* Touch devices only: force 16px on ALL widget inputs so iOS never zooms (Salla/Zid) */
+@media (hover: none) {
+ #chat-window input,
+ #chat-window textarea {
+ font-size: 16px !important;
+ touch-action: manipulation !important;
+ }
+ #chat-window input::placeholder,
+ #chat-window textarea::placeholder {
+ font-size: 16px !important;
+ }
+}
+
 .message-detail-input-wrapper {
  display: flex;
  flex-direction: column;
