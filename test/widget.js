@@ -53,10 +53,16 @@
   wrapper.setAttribute("dir", "ltr"); // isolate from page: widget is LTR unless data-rtl says otherwise
   wrapper.setAttribute("data-position", normalizePosition(scriptPosition));
   document.body.appendChild(wrapper);
-  const BASE_WIDGET_BOTTOM_OFFSET = 20;
+  const touchPointer = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+  const smallestViewportSide = Math.min(window.innerWidth || 0, window.innerHeight || 0);
+  const BASE_WIDGET_BOTTOM_OFFSET = (touchPointer && smallestViewportSide <= 500) ? 96 : 20;
   const MAX_HOST_OVERLAY_HEIGHT = 220;
   const WIDGET_BOTTOM_OFFSET_VAR = "--fugah-widget-bottom-offset";
   wrapper.style.setProperty(WIDGET_BOTTOM_OFFSET_VAR, `${BASE_WIDGET_BOTTOM_OFFSET}px`);
+  const debugRunId = `run-${Date.now()}`;
+  const emitDebugLog = (hypothesisId, location, message, data) => {
+    fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',runId:debugRunId,hypothesisId,location,message,data,timestamp:Date.now()})}).catch(()=>{});
+  };
 
   const getHostBottomOverlayHeight = () => {
     if (!document.body) return 0;
@@ -84,6 +90,14 @@
     const overlayHeight = getHostBottomOverlayHeight();
     const nextOffset = BASE_WIDGET_BOTTOM_OFFSET + overlayHeight;
     wrapper.style.setProperty(WIDGET_BOTTOM_OFFSET_VAR, `${nextOffset}px`);
+    // #region agent log
+    emitDebugLog("H1", "test/widget.js:refreshWidgetBottomOffset", "Computed widget bottom offset", {
+      overlayHeight,
+      nextOffset,
+      viewportWidth: window.innerWidth || 0,
+      viewportHeight: window.innerHeight || 0
+    });
+    // #endregion
   };
 
   // Initial config load from Supabase Edge Function (if available)
@@ -233,6 +247,13 @@
               chatWindow.style.setProperty("right", "20px", "important");
               chatWindow.style.setProperty("left", "auto", "important");
             }
+            // #region agent log
+            emitDebugLog("H2", "test/widget.js:applyWidgetPosition", "Applied widget side position", {
+              resolvedPosition: position,
+              chatWindowBottom: chatWindow.style.getPropertyValue("bottom") || "",
+              rootOffsetVar: wrapper.style.getPropertyValue(WIDGET_BOTTOM_OFFSET_VAR) || ""
+            });
+            // #endregion
           };
           applyWidgetPosition();
           refreshWidgetBottomOffset();
@@ -616,6 +637,17 @@
           const isMobileMedia = window.matchMedia && window.matchMedia('(max-width: 767px)').matches;
           const isMobile = isMobileWidth || isMobileMedia || isIOSPhone || (isCoarsePointer && minScreenSide <= 430);
           console.log('Mobile check - width:', width, 'isMobileWidth:', isMobileWidth, 'isMobileMedia:', isMobileMedia, 'isMobile:', isMobile);
+          // #region agent log
+          emitDebugLog("H3", "test/widget.js:checkIsMobile", "Device classification check", {
+            width,
+            minScreenSide,
+            isMobileWidth,
+            isMobileMedia,
+            isIOSPhone,
+            isCoarsePointer,
+            isMobile
+          });
+          // #endregion
           return isMobile;
         };
 
@@ -688,6 +720,17 @@
               // Determine if device is mobile or tablet for different behavior
               const isMobile = checkIsMobile();
               const isTablet = !isMobile && checkIsTablet();
+              // #region agent log
+              emitDebugLog("H4", "test/widget.js:mobileHeightUpdateHandler:entry", "Keyboard handler entered", {
+                isOpen,
+                isMobile,
+                isTablet,
+                isIOS: checkIsIOS(),
+                innerHeight: window.innerHeight || 0,
+                visualViewportHeight: window.visualViewport ? window.visualViewport.height : null,
+                visualViewportOffsetTop: window.visualViewport ? (window.visualViewport.offsetTop || 0) : null
+              });
+              // #endregion
               
               // Use visualViewport API to detect keyboard and position accordingly
               if (window.visualViewport) {
@@ -695,6 +738,14 @@
                 const viewportOffsetTop = window.visualViewport.offsetTop || 0;
                 // Keyboard is open when viewport shrinks (iOS) or offsetTop > 0 (Android)
                 const keyboardLikelyOpen = viewportOffsetTop > 0 || viewportHeight < window.innerHeight * 0.85;
+                // #region agent log
+                emitDebugLog("H4", "test/widget.js:mobileHeightUpdateHandler:viewport-branch", "Viewport keyboard decision", {
+                  viewportHeight,
+                  viewportOffsetTop,
+                  innerHeight: window.innerHeight || 0,
+                  keyboardLikelyOpen
+                });
+                // #endregion
                 if (keyboardLikelyOpen) {
                   // Use visualViewport.height - on iOS, innerHeight does NOT shrink when keyboard opens
                   const getKeyboardOpenHeight = () => {
@@ -1688,6 +1739,15 @@
           if (customPlaceholder) {
             customPlaceholder.style.display = "none";
           }
+          // #region agent log
+          emitDebugLog("H5", "test/widget.js:phoneInput:focus", "Phone input focused", {
+            isIOS: checkIsIOS(),
+            isMobile: checkIsMobile(),
+            isTablet: checkIsTablet(),
+            inputComputedFontSize: window.getComputedStyle(phoneInput).fontSize,
+            visualViewportHeight: window.visualViewport ? window.visualViewport.height : null
+          });
+          // #endregion
           
           // ========================================
           // iOS-SPECIFIC: Hide footer when phone input is focused (keyboard opens)
@@ -3829,10 +3889,22 @@
 
         // Trigger height update when input is focused (keyboard opens) - fixes first-time gap
         messageDetailInput.addEventListener("focus", () => {
+          const computedBefore = window.getComputedStyle(messageDetailInput).fontSize;
           // iOS: Force 16px to prevent zoom (iOS zooms when input font-size < 16px)
           if (checkIsMobile() || checkIsIOS()) {
             messageDetailInput.style.setProperty("font-size", "16px", "important");
           }
+          // #region agent log
+          emitDebugLog("H5", "test/widget.js:messageDetailInput:focus", "Message input focused", {
+            isIOS: checkIsIOS(),
+            isMobile: checkIsMobile(),
+            isTablet: checkIsTablet(),
+            fontSizeBefore: computedBefore,
+            fontSizeAfterInline: messageDetailInput.style.getPropertyValue("font-size") || "",
+            computedAfter: window.getComputedStyle(messageDetailInput).fontSize,
+            visualViewportHeight: window.visualViewport ? window.visualViewport.height : null
+          });
+          // #endregion
           // ========================================
           // iOS-SPECIFIC: Hide footer when input is focused (keyboard opens)
           // ========================================
