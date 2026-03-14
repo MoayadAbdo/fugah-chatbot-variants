@@ -53,6 +53,38 @@
   wrapper.setAttribute("dir", "ltr"); // isolate from page: widget is LTR unless data-rtl says otherwise
   wrapper.setAttribute("data-position", normalizePosition(scriptPosition));
   document.body.appendChild(wrapper);
+  const BASE_WIDGET_BOTTOM_OFFSET = 20;
+  const MAX_HOST_OVERLAY_HEIGHT = 220;
+  const WIDGET_BOTTOM_OFFSET_VAR = "--fugah-widget-bottom-offset";
+  wrapper.style.setProperty(WIDGET_BOTTOM_OFFSET_VAR, `${BASE_WIDGET_BOTTOM_OFFSET}px`);
+
+  const getHostBottomOverlayHeight = () => {
+    if (!document.body) return 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const minOverlayWidth = Math.min(240, Math.floor(viewportWidth * 0.4));
+    let maxOverlayHeight = 0;
+    const elements = document.body.querySelectorAll("*");
+    for (const el of elements) {
+      if (el === wrapper || wrapper.contains(el)) continue;
+      const style = window.getComputedStyle(el);
+      if (!style || style.display === "none" || style.visibility === "hidden") continue;
+      if (parseFloat(style.opacity || "1") === 0) continue;
+      if (style.position !== "fixed" && style.position !== "sticky") continue;
+      const rect = el.getBoundingClientRect();
+      if (!rect || rect.width < minOverlayWidth || rect.height < 36 || rect.height > 260) continue;
+      const anchoredToBottom = rect.bottom >= viewportHeight - 2 && rect.top < viewportHeight - 8;
+      if (!anchoredToBottom) continue;
+      maxOverlayHeight = Math.max(maxOverlayHeight, rect.height);
+    }
+    return Math.min(maxOverlayHeight, MAX_HOST_OVERLAY_HEIGHT);
+  };
+
+  const refreshWidgetBottomOffset = () => {
+    const overlayHeight = getHostBottomOverlayHeight();
+    const nextOffset = BASE_WIDGET_BOTTOM_OFFSET + overlayHeight;
+    wrapper.style.setProperty(WIDGET_BOTTOM_OFFSET_VAR, `${nextOffset}px`);
+  };
 
   // Initial config load from Supabase Edge Function (if available)
   if (API_URL && storeId) {
@@ -82,7 +114,7 @@
 
   // Critical fallback styles: show launcher immediately while full CSS loads.
   const criticalStyle = document.createElement("style");
-  criticalStyle.textContent = "#chat-bubble{position:fixed;bottom:20px;right:20px;width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;background:#222}#chat-bubble img{width:100%;height:100%;object-fit:cover}:host([data-position=\"bottom-left\"]) #chat-bubble{left:20px;right:auto}";
+  criticalStyle.textContent = ":host{--fugah-widget-bottom-offset:20px}#chat-bubble{position:fixed;bottom:var(--fugah-widget-bottom-offset,20px);right:20px;width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;background:#222}#chat-bubble img{width:100%;height:100%;object-fit:cover}:host([data-position=\"bottom-left\"]) #chat-bubble{left:20px;right:auto}";
   shadow.appendChild(criticalStyle);
 
   // ========================================
@@ -203,6 +235,35 @@
             }
           };
           applyWidgetPosition();
+          refreshWidgetBottomOffset();
+          const scheduleBottomOffsetRefresh = (() => {
+            let timeoutId = null;
+            return () => {
+              if (timeoutId) clearTimeout(timeoutId);
+              timeoutId = setTimeout(() => {
+                refreshWidgetBottomOffset();
+                timeoutId = null;
+              }, 120);
+            };
+          })();
+          window.addEventListener("resize", scheduleBottomOffsetRefresh, { passive: true });
+          window.addEventListener("orientationchange", scheduleBottomOffsetRefresh, { passive: true });
+          window.addEventListener("scroll", scheduleBottomOffsetRefresh, { passive: true });
+          if (window.visualViewport) {
+            window.visualViewport.addEventListener("resize", scheduleBottomOffsetRefresh, { passive: true });
+            window.visualViewport.addEventListener("scroll", scheduleBottomOffsetRefresh, { passive: true });
+          }
+          if (typeof MutationObserver !== "undefined") {
+            const hostOverlayObserver = new MutationObserver(scheduleBottomOffsetRefresh);
+            hostOverlayObserver.observe(document.body, {
+              childList: true,
+              subtree: true,
+              attributes: true,
+              attributeFilter: ["style", "class"]
+            });
+          }
+          setTimeout(refreshWidgetBottomOffset, 500);
+          setTimeout(refreshWidgetBottomOffset, 1500);
 
       // ========================================
       // END HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
@@ -545,14 +606,20 @@
         // ========================================
         // Helper function to check if device is mobile (max-width: 767px)
         const checkIsMobile = () => {
+          const ua = navigator.userAgent || "";
+          const minScreenSide = Math.min(window.screen?.width || window.innerWidth, window.screen?.height || window.innerHeight);
+          const isIOSPhone = /iPhone|iPod/i.test(ua) || (/Mac/i.test(navigator.platform || "") && navigator.maxTouchPoints > 1 && minScreenSide <= 430);
+          const isCoarsePointer = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
           // Check both window width and matchMedia for better mobile detection
           const width = window.innerWidth;
           const isMobileWidth = width <= 767;
           const isMobileMedia = window.matchMedia && window.matchMedia('(max-width: 767px)').matches;
-          const isMobile = isMobileWidth || isMobileMedia;
+          const isMobile = isMobileWidth || isMobileMedia || isIOSPhone || (isCoarsePointer && minScreenSide <= 430);
           console.log('Mobile check - width:', width, 'isMobileWidth:', isMobileWidth, 'isMobileMedia:', isMobileMedia, 'isMobile:', isMobile);
           return isMobile;
         };
+
+        const checkIsIOS = () => /iPad|iPhone|iPod/i.test(navigator.userAgent || "") || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
         // Helper function to check if device is tablet (600px to 991px)
         // Tablets include iPads and Android tablets
@@ -617,10 +684,10 @@
             // Mobile: max-width: 767px (fullscreen behavior)
             // Tablets: 600px to 991px (iPads, Android tablets - normal window size)
             // Combined check: max-width: 991px covers both
-            if (isOpen && checkIsMobileOrTablet()) {
+            if (isOpen && (checkIsMobileOrTablet() || checkIsIOS())) {
               // Determine if device is mobile or tablet for different behavior
               const isMobile = checkIsMobile();
-              const isTablet = checkIsTablet();
+              const isTablet = !isMobile && checkIsTablet();
               
               // Use visualViewport API to detect keyboard and position accordingly
               if (window.visualViewport) {
@@ -693,7 +760,7 @@
                     chatWindow.style.setProperty("max-height", `${maxTabletHeight}px`, "important");
                     // Keep normal tablet positioning (don't go fullscreen)
                     chatWindow.style.setProperty("position", "fixed", "important");
-                    chatWindow.style.setProperty("bottom", "20px", "important");
+                    chatWindow.style.setProperty("bottom", "var(--fugah-widget-bottom-offset, 20px)", "important");
                     chatWindow.style.setProperty("width", "390px", "important");
                     chatWindow.style.setProperty("top", "auto", "important");
                     if (getResolvedPosition() === "bottom-left") {
@@ -809,7 +876,7 @@
                     chatWindow.style.setProperty("max-height", "90vh", "important");
                     chatWindow.style.setProperty("width", "390px", "important");
                     chatWindow.style.setProperty("position", "fixed", "important");
-                    chatWindow.style.setProperty("bottom", "20px", "important");
+                    chatWindow.style.setProperty("bottom", "var(--fugah-widget-bottom-offset, 20px)", "important");
                     chatWindow.style.setProperty("top", "auto", "important");
                     if (getResolvedPosition() === "bottom-left") {
                       chatWindow.style.setProperty("left", "20px", "important");
@@ -1626,7 +1693,7 @@
           // iOS-SPECIFIC: Hide footer when phone input is focused (keyboard opens)
           // ========================================
           const isIOS = checkIsIOS();
-          if (isIOS && checkIsMobile()) {
+          if (isIOS && (checkIsMobile() || checkIsTablet())) {
             const fugahFooter = shadow.querySelector("#fugah-footer");
             // Hide footer completely so user can see what they type
             if (fugahFooter) {
@@ -1644,7 +1711,7 @@
           updatePlaceholderVisibility();
           
           const isIOS = checkIsIOS();
-          if (isIOS && checkIsMobile()) {
+          if (isIOS && (checkIsMobile() || checkIsTablet())) {
             // Small delay to ensure keyboard is fully closed
             setTimeout(() => {
               const fugahFooter = shadow.querySelector("#fugah-footer");
@@ -3763,14 +3830,14 @@
         // Trigger height update when input is focused (keyboard opens) - fixes first-time gap
         messageDetailInput.addEventListener("focus", () => {
           // iOS: Force 16px to prevent zoom (iOS zooms when input font-size < 16px)
-          if (checkIsMobile()) {
+          if (checkIsMobile() || checkIsIOS()) {
             messageDetailInput.style.setProperty("font-size", "16px", "important");
           }
           // ========================================
           // iOS-SPECIFIC: Hide footer when input is focused (keyboard opens)
           // ========================================
           const isIOS = checkIsIOS();
-          if (isIOS && checkIsMobile()) {
+          if (isIOS && (checkIsMobile() || checkIsTablet())) {
             const fugahFooter = shadow.querySelector("#fugah-footer");
             // Hide footer completely so only input container is visible
             if (fugahFooter) {
@@ -3794,7 +3861,7 @@
         // ========================================
         messageDetailInput.addEventListener("blur", () => {
           const isIOS = checkIsIOS();
-          if (isIOS && checkIsMobile()) {
+          if (isIOS && (checkIsMobile() || checkIsTablet())) {
             // Small delay to ensure keyboard is fully closed
             setTimeout(() => {
               const fugahFooter = shadow.querySelector("#fugah-footer");

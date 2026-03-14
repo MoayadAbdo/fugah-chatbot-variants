@@ -1,6 +1,10 @@
 /* ========================================
  PREVENT BACKGROUND SCROLLING WHEN CHAT IS OPEN
  ======================================== */
+:host {
+ --fugah-widget-bottom-offset: 20px;
+}
+
 /* Overflow-only scroll lock so background stays visible in all browsers (no position:fixed on body) */
 body.chat-open,
 html.chat-open {
@@ -139,7 +143,7 @@ body.chat-open #chatbot-widget-root {
 /* Main floating chat bubble positioned at bottom right */
 #chat-bubble {
  position: fixed;
- bottom: 20px;
+ bottom: var(--fugah-widget-bottom-offset, 20px);
  right: 20px;
  width: 60px;
  height: 60px;
@@ -325,7 +329,7 @@ body.chat-open #chatbot-widget-root {
 
 #chat-window {
  position: fixed;
- bottom: 20px;
+ bottom: var(--fugah-widget-bottom-offset, 20px);
  right: 20px;
  width: 390px;
  height: 670px;
@@ -632,7 +636,7 @@ body.chat-open #chatbot-widget-root {
  min-width: 320px;
  min-height: 500px;
  right: 20px;
- bottom: 20px;
+ bottom: var(--fugah-widget-bottom-offset, 20px);
  background-size: cover !important;
  background-position: center !important;
  background-repeat: no-repeat !important;
@@ -880,7 +884,7 @@ body.chat-open #chatbot-widget-root {
  max-height: 90vh;
  min-width: 320px;
  min-height: 500px;
- bottom: 20px;
+ bottom: var(--fugah-widget-bottom-offset, 20px);
  right: 20px;
  }
  
@@ -2175,6 +2179,18 @@ margin-bottom: 0 !important;
  position: relative !important;
  bottom: auto !important;
  }
+ #message-detail-input,
+ .message-detail-input {
+ font-size: 16px !important;
+ touch-action: manipulation !important;
+ }
+ .message-detail-input::placeholder,
+ #message-detail-input::placeholder {
+ font-size: 16px !important;
+ }
+}
+
+@media (hover: none) and (pointer: coarse) {
  #message-detail-input,
  .message-detail-input {
  font-size: 16px !important;
