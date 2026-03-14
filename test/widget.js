@@ -53,51 +53,49 @@
   wrapper.setAttribute("dir", "ltr"); // isolate from page: widget is LTR unless data-rtl says otherwise
   wrapper.setAttribute("data-position", normalizePosition(scriptPosition));
   document.body.appendChild(wrapper);
-  const touchPointer = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
-  const smallestViewportSide = Math.min(window.innerWidth || 0, window.innerHeight || 0);
-  const BASE_WIDGET_BOTTOM_OFFSET = (touchPointer && smallestViewportSide <= 500) ? 96 : 20;
-  const MAX_HOST_OVERLAY_HEIGHT = 220;
   const WIDGET_BOTTOM_OFFSET_VAR = "--fugah-widget-bottom-offset";
-  wrapper.style.setProperty(WIDGET_BOTTOM_OFFSET_VAR, `${BASE_WIDGET_BOTTOM_OFFSET}px`);
-  const debugRunId = `run-${Date.now()}`;
-  const emitDebugLog = (hypothesisId, location, message, data) => {
-    fetch('http://127.0.0.1:7851/ingest/108f4d76-e1e3-4111-b6b2-15f8058bcc2a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13137e'},body:JSON.stringify({sessionId:'13137e',runId:debugRunId,hypothesisId,location,message,data,timestamp:Date.now()})}).catch(()=>{});
-  };
+  const WIDGET_SIDE_MARGIN = 16;
+  const MAX_HOST_OVERLAY_HEIGHT = 220;
+  wrapper.style.setProperty(WIDGET_BOTTOM_OFFSET_VAR, `${WIDGET_SIDE_MARGIN}px`);
 
-  const getHostBottomOverlayHeight = () => {
+  // Scan host page for visible fixed/sticky bars anchored to the bottom (e.g. Zid/Salla buy bars).
+  const getHostBottomBarHeight = () => {
     if (!document.body) return 0;
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-    const minOverlayWidth = Math.min(240, Math.floor(viewportWidth * 0.4));
-    let maxOverlayHeight = 0;
+    const vH = window.innerHeight || document.documentElement.clientHeight || 0;
+    const vW = window.innerWidth || document.documentElement.clientWidth || 0;
+    // Accept bars that are at least 30% viewport width wide (product bars are always wide)
+    const minW = Math.max(80, Math.floor(vW * 0.3));
+    let maxH = 0;
     const elements = document.body.querySelectorAll("*");
     for (const el of elements) {
       if (el === wrapper || wrapper.contains(el)) continue;
-      const style = window.getComputedStyle(el);
-      if (!style || style.display === "none" || style.visibility === "hidden") continue;
-      if (parseFloat(style.opacity || "1") === 0) continue;
-      if (style.position !== "fixed" && style.position !== "sticky") continue;
+      const cs = window.getComputedStyle(el);
+      if (!cs || cs.display === "none" || cs.visibility === "hidden") continue;
+      if (parseFloat(cs.opacity || "1") === 0) continue;
+      if (cs.position !== "fixed" && cs.position !== "sticky") continue;
       const rect = el.getBoundingClientRect();
-      if (!rect || rect.width < minOverlayWidth || rect.height < 36 || rect.height > 260) continue;
-      const anchoredToBottom = rect.bottom >= viewportHeight - 2 && rect.top < viewportHeight - 8;
-      if (!anchoredToBottom) continue;
-      maxOverlayHeight = Math.max(maxOverlayHeight, rect.height);
+      if (!rect || rect.width < minW || rect.height < 28 || rect.height > MAX_HOST_OVERLAY_HEIGHT) continue;
+      // Element must be visually touching the bottom of the viewport
+      if (rect.bottom < vH - 4) continue;
+      maxH = Math.max(maxH, rect.height);
     }
-    return Math.min(maxOverlayHeight, MAX_HOST_OVERLAY_HEIGHT);
+    return Math.min(maxH, MAX_HOST_OVERLAY_HEIGHT);
   };
 
+  // Get current visual keyboard height (0 when keyboard is closed).
+  const getKeyboardHeight = () => {
+    if (!window.visualViewport) return 0;
+    const kh = window.innerHeight - window.visualViewport.height - (window.visualViewport.offsetTop || 0);
+    return Math.max(0, kh);
+  };
+
+  // Compute and apply the correct bottom offset for bubble + chat window.
+  // Priority: if keyboard is open → sit above keyboard; else → sit above host sticky bar.
   const refreshWidgetBottomOffset = () => {
-    const overlayHeight = getHostBottomOverlayHeight();
-    const nextOffset = BASE_WIDGET_BOTTOM_OFFSET + overlayHeight;
+    const kbH = getKeyboardHeight();
+    const barH = kbH > 0 ? 0 : getHostBottomBarHeight();
+    const nextOffset = WIDGET_SIDE_MARGIN + (kbH > 0 ? kbH : barH);
     wrapper.style.setProperty(WIDGET_BOTTOM_OFFSET_VAR, `${nextOffset}px`);
-    // #region agent log
-    emitDebugLog("H1", "test/widget.js:refreshWidgetBottomOffset", "Computed widget bottom offset", {
-      overlayHeight,
-      nextOffset,
-      viewportWidth: window.innerWidth || 0,
-      viewportHeight: window.innerHeight || 0
-    });
-    // #endregion
   };
 
   // Initial config load from Supabase Edge Function (if available)
@@ -128,7 +126,7 @@
 
   // Critical fallback styles: show launcher immediately while full CSS loads.
   const criticalStyle = document.createElement("style");
-  criticalStyle.textContent = ":host{--fugah-widget-bottom-offset:20px}#chat-bubble{position:fixed;bottom:var(--fugah-widget-bottom-offset,20px);right:20px;width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;background:#222}#chat-bubble img{width:100%;height:100%;object-fit:cover}:host([data-position=\"bottom-left\"]) #chat-bubble{left:20px;right:auto}";
+  criticalStyle.textContent = ":host{--fugah-widget-bottom-offset:16px}#chat-bubble{position:fixed;bottom:var(--fugah-widget-bottom-offset,16px);right:16px;width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;background:#222;transition:bottom .18s ease,transform .18s ease;will-change:bottom,transform}#chat-bubble img{width:100%;height:100%;object-fit:cover}:host([data-position=\"bottom-left\"]) #chat-bubble{left:16px;right:auto}";
   shadow.appendChild(criticalStyle);
 
   // ========================================
@@ -144,9 +142,17 @@
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", updateViewportHeightVar, { passive: true });
     window.visualViewport.addEventListener("scroll", updateViewportHeightVar, { passive: true });
+    // Keyboard detection: update bubble position whenever visualViewport resizes
+    window.visualViewport.addEventListener("resize", refreshWidgetBottomOffset, { passive: true });
+    window.visualViewport.addEventListener("scroll", refreshWidgetBottomOffset, { passive: true });
   }
   window.addEventListener("resize", updateViewportHeightVar);
   window.addEventListener("orientationchange", updateViewportHeightVar);
+  window.addEventListener("resize", refreshWidgetBottomOffset, { passive: true });
+  window.addEventListener("orientationchange", refreshWidgetBottomOffset, { passive: true });
+  // When ANY host-page input is focused/blurred, re-check keyboard + sticky-bar height
+  document.addEventListener("focusin", refreshWidgetBottomOffset, { passive: true });
+  document.addEventListener("focusout", () => setTimeout(refreshWidgetBottomOffset, 80), { passive: true });
 
   // ========================================
   // END SHADOW DOM SETUP FUNCTIONALITY
@@ -247,44 +253,20 @@
               chatWindow.style.setProperty("right", "20px", "important");
               chatWindow.style.setProperty("left", "auto", "important");
             }
-            // #region agent log
-            emitDebugLog("H2", "test/widget.js:applyWidgetPosition", "Applied widget side position", {
-              resolvedPosition: position,
-              chatWindowBottom: chatWindow.style.getPropertyValue("bottom") || "",
-              rootOffsetVar: wrapper.style.getPropertyValue(WIDGET_BOTTOM_OFFSET_VAR) || ""
-            });
-            // #endregion
           };
           applyWidgetPosition();
           refreshWidgetBottomOffset();
-          const scheduleBottomOffsetRefresh = (() => {
-            let timeoutId = null;
-            return () => {
-              if (timeoutId) clearTimeout(timeoutId);
-              timeoutId = setTimeout(() => {
-                refreshWidgetBottomOffset();
-                timeoutId = null;
-              }, 120);
-            };
-          })();
-          window.addEventListener("resize", scheduleBottomOffsetRefresh, { passive: true });
-          window.addEventListener("orientationchange", scheduleBottomOffsetRefresh, { passive: true });
-          window.addEventListener("scroll", scheduleBottomOffsetRefresh, { passive: true });
-          if (window.visualViewport) {
-            window.visualViewport.addEventListener("resize", scheduleBottomOffsetRefresh, { passive: true });
-            window.visualViewport.addEventListener("scroll", scheduleBottomOffsetRefresh, { passive: true });
-          }
+          // Re-run after page content finishes rendering (host bars may appear late)
           if (typeof MutationObserver !== "undefined") {
-            const hostOverlayObserver = new MutationObserver(scheduleBottomOffsetRefresh);
+            const hostOverlayObserver = new MutationObserver(refreshWidgetBottomOffset);
             hostOverlayObserver.observe(document.body, {
               childList: true,
-              subtree: true,
-              attributes: true,
-              attributeFilter: ["style", "class"]
+              subtree: false,
+              attributes: false
             });
           }
-          setTimeout(refreshWidgetBottomOffset, 500);
-          setTimeout(refreshWidgetBottomOffset, 1500);
+          setTimeout(refreshWidgetBottomOffset, 600);
+          setTimeout(refreshWidgetBottomOffset, 2000);
 
       // ========================================
       // END HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
@@ -637,17 +619,6 @@
           const isMobileMedia = window.matchMedia && window.matchMedia('(max-width: 767px)').matches;
           const isMobile = isMobileWidth || isMobileMedia || isIOSPhone || (isCoarsePointer && minScreenSide <= 430);
           console.log('Mobile check - width:', width, 'isMobileWidth:', isMobileWidth, 'isMobileMedia:', isMobileMedia, 'isMobile:', isMobile);
-          // #region agent log
-          emitDebugLog("H3", "test/widget.js:checkIsMobile", "Device classification check", {
-            width,
-            minScreenSide,
-            isMobileWidth,
-            isMobileMedia,
-            isIOSPhone,
-            isCoarsePointer,
-            isMobile
-          });
-          // #endregion
           return isMobile;
         };
 
@@ -720,17 +691,6 @@
               // Determine if device is mobile or tablet for different behavior
               const isMobile = checkIsMobile();
               const isTablet = !isMobile && checkIsTablet();
-              // #region agent log
-              emitDebugLog("H4", "test/widget.js:mobileHeightUpdateHandler:entry", "Keyboard handler entered", {
-                isOpen,
-                isMobile,
-                isTablet,
-                isIOS: checkIsIOS(),
-                innerHeight: window.innerHeight || 0,
-                visualViewportHeight: window.visualViewport ? window.visualViewport.height : null,
-                visualViewportOffsetTop: window.visualViewport ? (window.visualViewport.offsetTop || 0) : null
-              });
-              // #endregion
               
               // Use visualViewport API to detect keyboard and position accordingly
               if (window.visualViewport) {
@@ -738,14 +698,6 @@
                 const viewportOffsetTop = window.visualViewport.offsetTop || 0;
                 // Keyboard is open when viewport shrinks (iOS) or offsetTop > 0 (Android)
                 const keyboardLikelyOpen = viewportOffsetTop > 0 || viewportHeight < window.innerHeight * 0.85;
-                // #region agent log
-                emitDebugLog("H4", "test/widget.js:mobileHeightUpdateHandler:viewport-branch", "Viewport keyboard decision", {
-                  viewportHeight,
-                  viewportOffsetTop,
-                  innerHeight: window.innerHeight || 0,
-                  keyboardLikelyOpen
-                });
-                // #endregion
                 if (keyboardLikelyOpen) {
                   // Use visualViewport.height - on iOS, innerHeight does NOT shrink when keyboard opens
                   const getKeyboardOpenHeight = () => {
@@ -1739,15 +1691,6 @@
           if (customPlaceholder) {
             customPlaceholder.style.display = "none";
           }
-          // #region agent log
-          emitDebugLog("H5", "test/widget.js:phoneInput:focus", "Phone input focused", {
-            isIOS: checkIsIOS(),
-            isMobile: checkIsMobile(),
-            isTablet: checkIsTablet(),
-            inputComputedFontSize: window.getComputedStyle(phoneInput).fontSize,
-            visualViewportHeight: window.visualViewport ? window.visualViewport.height : null
-          });
-          // #endregion
           
           // ========================================
           // iOS-SPECIFIC: Hide footer when phone input is focused (keyboard opens)
@@ -3889,22 +3832,10 @@
 
         // Trigger height update when input is focused (keyboard opens) - fixes first-time gap
         messageDetailInput.addEventListener("focus", () => {
-          const computedBefore = window.getComputedStyle(messageDetailInput).fontSize;
           // iOS: Force 16px to prevent zoom (iOS zooms when input font-size < 16px)
           if (checkIsMobile() || checkIsIOS()) {
             messageDetailInput.style.setProperty("font-size", "16px", "important");
           }
-          // #region agent log
-          emitDebugLog("H5", "test/widget.js:messageDetailInput:focus", "Message input focused", {
-            isIOS: checkIsIOS(),
-            isMobile: checkIsMobile(),
-            isTablet: checkIsTablet(),
-            fontSizeBefore: computedBefore,
-            fontSizeAfterInline: messageDetailInput.style.getPropertyValue("font-size") || "",
-            computedAfter: window.getComputedStyle(messageDetailInput).fontSize,
-            visualViewportHeight: window.visualViewport ? window.visualViewport.height : null
-          });
-          // #endregion
           // ========================================
           // iOS-SPECIFIC: Hide footer when input is focused (keyboard opens)
           // ========================================

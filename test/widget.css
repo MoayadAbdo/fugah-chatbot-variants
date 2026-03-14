@@ -143,8 +143,8 @@ body.chat-open #chatbot-widget-root {
 /* Main floating chat bubble positioned at bottom right */
 #chat-bubble {
  position: fixed;
- bottom: var(--fugah-widget-bottom-offset, 20px);
- right: 20px;
+ bottom: var(--fugah-widget-bottom-offset, 16px);
+ right: 16px;
  width: 60px;
  height: 60px;
  border-radius: 50%;
@@ -156,12 +156,13 @@ body.chat-open #chatbot-widget-root {
  z-index: 10000;
  overflow: hidden;
  /*background-color: #4CAF50; fallback when no theme – no transparent edges */
- transition: transform 0.2s ease, background-color 0.2s ease, padding 0.2s ease;
+ transition: bottom 0.18s ease, transform 0.2s ease, background-color 0.2s ease, padding 0.2s ease;
+ will-change: bottom, transform;
 }
 
 /* Host-controlled placement support (Salla + Zid) */
 :host([data-position="bottom-left"]) #chat-bubble {
- left: 20px;
+ left: 16px;
  right: auto;
 }
 
@@ -329,8 +330,9 @@ body.chat-open #chatbot-widget-root {
 
 #chat-window {
  position: fixed;
- bottom: var(--fugah-widget-bottom-offset, 20px);
- right: 20px;
+ bottom: var(--fugah-widget-bottom-offset, 16px);
+ right: 16px;
+ transition: bottom 0.18s ease;
  width: 390px;
  height: 670px;
  max-width: 390px;
@@ -359,7 +361,7 @@ body.chat-open #chatbot-widget-root {
 }
 
 :host([data-position="bottom-left"]) #chat-window {
- left: 20px;
+ left: 16px;
  right: auto;
  transform-origin: bottom left;
 }
@@ -629,14 +631,14 @@ body.chat-open #chatbot-widget-root {
 @media (min-width: 600px) and (max-width: 991px) {
  /* Chat window - consistent sizing for tablets */
  #chat-window {
- width: 390px;
- height: 670px;
- max-width: 390px;
- max-height: 90vh;
- min-width: 320px;
- min-height: 500px;
- right: 20px;
- bottom: var(--fugah-widget-bottom-offset, 20px);
+  width: 390px;
+  height: 670px;
+  max-width: 390px;
+  max-height: 90vh;
+  min-width: 320px;
+  min-height: 500px;
+  right: 16px;
+  bottom: var(--fugah-widget-bottom-offset, 16px);
  background-size: cover !important;
  background-position: center !important;
  background-repeat: no-repeat !important;
@@ -878,14 +880,14 @@ body.chat-open #chatbot-widget-root {
 @media (min-width: 992px) {
  /* Chat window - responsive sizing for desktop using viewport units */
  #chat-window {
- width: min(390px, 20vw);
- height: min(670px, 85vh);
- max-width: 450px;
- max-height: 90vh;
- min-width: 320px;
- min-height: 500px;
- bottom: var(--fugah-widget-bottom-offset, 20px);
- right: 20px;
+  width: min(390px, 20vw);
+  height: min(670px, 85vh);
+  max-width: 450px;
+  max-height: 90vh;
+  min-width: 320px;
+  min-height: 500px;
+  bottom: var(--fugah-widget-bottom-offset, 16px);
+  right: 16px;
  }
  
  /* Home Screen Responsive Sizing */
