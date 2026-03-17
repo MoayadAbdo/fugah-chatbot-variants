@@ -63,8 +63,21 @@
     if (!document.body) return 0;
     const vH = window.innerHeight || document.documentElement.clientHeight || 0;
     const vW = window.innerWidth || document.documentElement.clientWidth || 0;
-    const minW = Math.max(60, Math.floor(vW * 0.25));
     let maxH = 0;
+
+    // Zid product page: explicit detection for #sticky-cta (product bar with thumbnail, price, Add to Cart)
+    const stickyCta = document.getElementById("sticky-cta") || document.querySelector("[data-sticky-cta]");
+    if (stickyCta) {
+      const cs = window.getComputedStyle(stickyCta);
+      if (cs && cs.display !== "none" && cs.visibility !== "hidden" && parseFloat(cs.opacity || "1") > 0) {
+        const rect = stickyCta.getBoundingClientRect();
+        if (rect && rect.height >= 24 && rect.bottom >= vH - 8) {
+          maxH = Math.max(maxH, Math.min(rect.height, MAX_HOST_OVERLAY_HEIGHT));
+        }
+      }
+    }
+
+    const minW = Math.max(60, Math.floor(vW * 0.25));
     const elements = document.body.querySelectorAll("*");
     for (const el of elements) {
       if (el === wrapper || wrapper.contains(el)) continue;
@@ -157,6 +170,19 @@
   // When ANY host-page input is focused/blurred, re-check keyboard + sticky-bar height
   document.addEventListener("focusin", refreshWidgetBottomOffset, { passive: true });
   document.addEventListener("focusout", () => setTimeout(refreshWidgetBottomOffset, 80), { passive: true });
+
+  // Zid: Re-check when #sticky-cta may appear (product page loads bar dynamically)
+  const observeStickyCta = () => {
+    const stickyCta = document.getElementById("sticky-cta");
+    if (stickyCta && !stickyCta.dataset.fugahObserved) {
+      stickyCta.dataset.fugahObserved = "1";
+      const obs = new MutationObserver(() => refreshWidgetBottomOffset());
+      obs.observe(stickyCta, { attributes: true, attributeFilter: ["class", "style"] });
+    }
+    refreshWidgetBottomOffset();
+  };
+  setTimeout(observeStickyCta, 500);
+  setTimeout(observeStickyCta, 2000);
 
   // ========================================
   // END SHADOW DOM SETUP FUNCTIONALITY
@@ -1695,18 +1721,24 @@
           if (customPlaceholder) {
             customPlaceholder.style.display = "none";
           }
-          
+          // iOS/Salla: Force 16px to prevent zoom on focus
+          phoneInput.style.setProperty("font-size", "16px", "important");
           // ========================================
           // iOS-SPECIFIC: Hide footer when phone input is focused (keyboard opens)
           // ========================================
           const isIOS = checkIsIOS();
           if (isIOS && (checkIsMobile() || checkIsTablet())) {
             const fugahFooter = shadow.querySelector("#fugah-footer");
-            // Hide footer completely so user can see what they type
             if (fugahFooter) {
               fugahFooter.style.setProperty("display", "none", "important");
             }
           }
+          // IMMEDIATE: Update viewport for Salla keyboard (fixes zoomed view)
+          updateViewportHeightVar();
+          if (mobileHeightUpdateHandler) mobileHeightUpdateHandler();
+          requestAnimationFrame(() => {
+            if (phoneInput) phoneInput.scrollIntoView({ block: "center", behavior: "auto" });
+          });
         });
         
         // ========================================
@@ -3834,9 +3866,9 @@
           autoResizeTextarea();
         });
 
-        // Trigger height update when input is focused (keyboard opens) - fixes first-time gap
+        // Trigger height update when input is focused (keyboard opens) - fixes first-time gap + Salla zoom
         messageDetailInput.addEventListener("focus", () => {
-          // iOS: Always force 16px on focus so page never zooms (Salla viewport can report wide; CSS may not match)
+          // iOS/Salla: Force 16px on focus so page never zooms
           messageDetailInput.style.setProperty("font-size", "16px", "important");
           // ========================================
           // iOS-SPECIFIC: Hide footer when input is focused (keyboard opens)
@@ -3844,18 +3876,23 @@
           const isIOS = checkIsIOS();
           if (isIOS && (checkIsMobile() || checkIsTablet())) {
             const fugahFooter = shadow.querySelector("#fugah-footer");
-            // Hide footer completely so only input container is visible
             if (fugahFooter) {
               fugahFooter.style.setProperty("display", "none", "important");
             }
           }
-          
-          // Trigger viewport update after keyboard animation completes
+          // IMMEDIATE: Update viewport and height before keyboard animates (fixes Salla zoom)
+          updateViewportHeightVar();
+          if (mobileHeightUpdateHandler) mobileHeightUpdateHandler();
+          requestAnimationFrame(() => {
+            if (messageDetailInput) {
+              messageDetailInput.scrollIntoView({ block: "center", behavior: "auto" });
+            }
+          });
+          // Delayed update for keyboard animation completion (iOS needs longer)
           if (mobileHeightUpdateHandler) {
-            // Wait for keyboard to fully open before updating
-            // iOS needs slightly longer delay
             const delay = isIOS ? 500 : 450;
             setTimeout(() => {
+              updateViewportHeightVar();
               mobileHeightUpdateHandler();
             }, delay);
           }
