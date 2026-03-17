@@ -71,7 +71,9 @@
       const cs = window.getComputedStyle(stickyCta);
       if (cs && cs.display !== "none" && cs.visibility !== "hidden" && parseFloat(cs.opacity || "1") > 0) {
         const rect = stickyCta.getBoundingClientRect();
-        if (rect && rect.height >= 24 && rect.bottom >= vH - 8) {
+        // Include bar if: at/near bottom, or fixed at bottom (rect can be off-screen during animation)
+        const isAtBottom = rect.bottom >= vH - 20 || (cs.position === "fixed" && rect.height >= 24);
+        if (rect && rect.height >= 24 && isAtBottom) {
           maxH = Math.max(maxH, Math.min(rect.height, MAX_HOST_OVERLAY_HEIGHT));
         }
       }
@@ -109,7 +111,9 @@
     const barH = kbH > 0 ? 0 : getHostBottomBarHeight();
     const vW = window.innerWidth || document.documentElement.clientWidth || 0;
     const isNarrowOrTouch = (vW <= 480) || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
-    const minBottom = isNarrowOrTouch ? 80 : WIDGET_SIDE_MARGIN;
+    // Zid product page fallback: use higher min when on *.zid.store/products/* (sticky bar ~80-100px)
+    const isZidProductPage = typeof window !== "undefined" && window.location && /zid\.store\/products\//i.test(window.location.href);
+    const minBottom = isZidProductPage ? 120 : (isNarrowOrTouch ? 80 : WIDGET_SIDE_MARGIN);
     const nextOffset = Math.max(minBottom, WIDGET_SIDE_MARGIN + (kbH > 0 ? kbH : barH));
     wrapper.style.setProperty(WIDGET_BOTTOM_OFFSET_VAR, `${nextOffset}px`);
   };
@@ -171,18 +175,24 @@
   document.addEventListener("focusin", refreshWidgetBottomOffset, { passive: true });
   document.addEventListener("focusout", () => setTimeout(refreshWidgetBottomOffset, 80), { passive: true });
 
-  // Zid: Re-check when #sticky-cta may appear (product page loads bar dynamically)
+  // Zid: Re-check when #sticky-cta may appear (product page loads bar on scroll or dynamically)
   const observeStickyCta = () => {
     const stickyCta = document.getElementById("sticky-cta");
     if (stickyCta && !stickyCta.dataset.fugahObserved) {
       stickyCta.dataset.fugahObserved = "1";
       const obs = new MutationObserver(() => refreshWidgetBottomOffset());
-      obs.observe(stickyCta, { attributes: true, attributeFilter: ["class", "style"] });
+      obs.observe(stickyCta, { attributes: true, attributeFilter: ["class", "style", "aria-hidden"] });
     }
     refreshWidgetBottomOffset();
   };
   setTimeout(observeStickyCta, 500);
   setTimeout(observeStickyCta, 2000);
+  // Zid: Sticky bar often appears when user scrolls - re-check on scroll
+  let scrollCheckTimeout = null;
+  window.addEventListener("scroll", () => {
+    if (scrollCheckTimeout) clearTimeout(scrollCheckTimeout);
+    scrollCheckTimeout = setTimeout(refreshWidgetBottomOffset, 100);
+  }, { passive: true });
 
   // ========================================
   // END SHADOW DOM SETUP FUNCTIONALITY
@@ -1723,6 +1733,14 @@
           }
           // iOS/Salla: Force 16px to prevent zoom on focus
           phoneInput.style.setProperty("font-size", "16px", "important");
+          // Salla: Try to prevent page zoom via viewport meta
+          try {
+            const meta = document.querySelector('meta[name="viewport"]');
+            if (meta && meta.content && !/maximum-scale=1/.test(meta.content)) {
+              const c = meta.content.replace(/maximum-scale=[^,\s]*/gi, "").replace(/,+/g, ",").replace(/^,|,$/g, "");
+              meta.content = (c ? c + "," : "") + "maximum-scale=1";
+            }
+          } catch (_) {}
           // ========================================
           // iOS-SPECIFIC: Hide footer when phone input is focused (keyboard opens)
           // ========================================
@@ -1733,11 +1751,15 @@
               fugahFooter.style.setProperty("display", "none", "important");
             }
           }
-          // IMMEDIATE: Update viewport for Salla keyboard (fixes zoomed view)
-          updateViewportHeightVar();
-          if (mobileHeightUpdateHandler) mobileHeightUpdateHandler();
+          // IMMEDIATE + REPEATED: Update viewport for Salla keyboard
+          const runUpdates = () => {
+            updateViewportHeightVar();
+            if (mobileHeightUpdateHandler) mobileHeightUpdateHandler();
+          };
+          runUpdates();
+          [50, 150, 300, 500].forEach((ms) => setTimeout(runUpdates, ms));
           requestAnimationFrame(() => {
-            if (phoneInput) phoneInput.scrollIntoView({ block: "center", behavior: "auto" });
+            if (phoneInput) phoneInput.scrollIntoView({ block: "nearest", behavior: "auto" });
           });
         });
         
@@ -3870,6 +3892,14 @@
         messageDetailInput.addEventListener("focus", () => {
           // iOS/Salla: Force 16px on focus so page never zooms
           messageDetailInput.style.setProperty("font-size", "16px", "important");
+          // Salla: Try to prevent page zoom via viewport meta (iOS zooms if input < 16px or viewport allows)
+          try {
+            const meta = document.querySelector('meta[name="viewport"]');
+            if (meta && meta.content && !/maximum-scale=1/.test(meta.content)) {
+              const c = meta.content.replace(/maximum-scale=[^,\s]*/gi, "").replace(/,+/g, ",").replace(/^,|,$/g, "");
+              meta.content = (c ? c + "," : "") + "maximum-scale=1";
+            }
+          } catch (_) {}
           // ========================================
           // iOS-SPECIFIC: Hide footer when input is focused (keyboard opens)
           // ========================================
@@ -3880,22 +3910,18 @@
               fugahFooter.style.setProperty("display", "none", "important");
             }
           }
-          // IMMEDIATE: Update viewport and height before keyboard animates (fixes Salla zoom)
-          updateViewportHeightVar();
-          if (mobileHeightUpdateHandler) mobileHeightUpdateHandler();
+          // IMMEDIATE + REPEATED: Update viewport (Salla keyboard can animate slowly)
+          const runUpdates = () => {
+            updateViewportHeightVar();
+            if (mobileHeightUpdateHandler) mobileHeightUpdateHandler();
+          };
+          runUpdates();
+          [50, 150, 300, 500].forEach((ms) => setTimeout(runUpdates, ms));
           requestAnimationFrame(() => {
             if (messageDetailInput) {
-              messageDetailInput.scrollIntoView({ block: "center", behavior: "auto" });
+              messageDetailInput.scrollIntoView({ block: "nearest", behavior: "auto" });
             }
           });
-          // Delayed update for keyboard animation completion (iOS needs longer)
-          if (mobileHeightUpdateHandler) {
-            const delay = isIOS ? 500 : 450;
-            setTimeout(() => {
-              updateViewportHeightVar();
-              mobileHeightUpdateHandler();
-            }, delay);
-          }
         });
         
         // ========================================
