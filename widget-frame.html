@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<!--
+  FUQAH WIDGET FRAME
+  =====================================================
+  WHERE THIS FILE LIVES: Vercel repo root (same level as widget.js)
+  URL: https://fugah-chatbot-variantsssz.vercel.app/widget-frame.html
+
+  WHAT IT DOES:
+  - This is the iframe document loaded by widget-loader.js
+  - Provides a fully isolated HTML context for widget.js
+  - Passes storeId from URL param into widget.js via a synthetic script tag
+  - Has transparent background so host store shows through
+  - Sends postMessage to parent to control pointer-events on the iframe
+
+  THIS FILE IS NOT THE SNIPPET — it is loaded inside the iframe.
+  The snippet in Salla/Zid loads widget-loader.js, which creates the iframe
+  pointing to this file.
+  =====================================================
+-->
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Fuqah Widget</title>
+  <style>
+    /* Full isolation — transparent so host page shows through iframe */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent !important;
+      overflow: hidden;
+      /* Prevent any accidental scrolling inside iframe */
+      position: fixed;
+      top: 0;
+      left: 0;
+    }
+  </style>
+</head>
+<body>
+  <!--
+    widget.js will self-execute and inject its own Shadow DOM root.
+    The script tag below mimics the Salla/Zid snippet format so widget.js
+    can read data-store-id via document.currentScript as usual.
+    storeId is injected from the URL param by the inline script below.
+  -->
+  <script>
+    // ── Read storeId from iframe URL param ──────────────────────────────────
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var storeId = params.get("storeId");
+
+      if (!storeId) {
+        console.warn("[Fuqah Frame] No storeId in URL. Widget will not load.");
+        return;
+      }
+
+      // ── Inject widget.js with data-store-id ─────────────────────────────
+      var script = document.createElement("script");
+      script.src = "/widget.js";
+      script.setAttribute("data-store-id", storeId);
+      script.charset = "UTF-8";
+      document.body.appendChild(script);
+
+      // ── postMessage helpers ──────────────────────────────────────────────
+      /*
+       * widget.js calls these two globals to signal interaction state
+       * to the parent loader:
+       *
+       *   window.fuqahActivate()   → iframe needs pointer events (chat opened)
+       *   window.fuqahDeactivate() → iframe idle, pass clicks to store
+       */
+      window.fuqahActivate = function () {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: "fuqah:active" }, "*");
+        }
+      };
+
+      window.fuqahDeactivate = function () {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: "fuqah:inactive" }, "*");
+        }
+      };
+    })();
+  </script>
+</body>
+</html>
