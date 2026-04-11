@@ -5,15 +5,74 @@
 // including theme switching, message handling, and user interactions
 
 (function() {
+  // Guard against double-initialization (Zid may run script from both SSR static tag and Vue dynamic injection).
+  if (window.__fugahWidgetLoaded) return;
+  window.__fugahWidgetLoaded = true;
+
   // ========================================
   // STORE ID CONFIGURATION FUNCTIONALITY
   // ========================================
-  // Read store ID from script tag data attribute
-  const scriptTag = document.currentScript;
-  const storeId = scriptTag.getAttribute("data-store-id") || "demo-store";
+  // Read store identifier from script tag data attribute.
+  // Fallback: document.currentScript is null when script is loaded async/dynamically (e.g. Zid app_scripts_bundle).
+  const scriptTag = document.currentScript || (function findWidgetScript() {
+    const byWidget = document.querySelectorAll('script[src*="widget.js"]');
+    for (let i = byWidget.length - 1; i >= 0; i--) {
+      const s = byWidget[i];
+      if (s.getAttribute("data-store-id") || s.getAttribute("data-store-url")) return s;
+    }
+    const legacy = document.querySelectorAll('script[src*="fuqah.net"]');
+    return legacy.length ? legacy[legacy.length - 1] : null;
+  })();
+  const urlParams = new URLSearchParams(window.location.search || "");
+  const urlStoreId = urlParams.get("store_id") || urlParams.get("identifier");
+  const storeId = scriptTag ? (scriptTag.getAttribute("data-store-url")
+    || scriptTag.getAttribute("data-store-id")
+    || urlStoreId
+    || "demo-store") : (urlStoreId || "demo-store");
+  // Load CSS/HTML/assets from script origin (or data-widget-base) so embed on Salla works
+  const explicitBase = scriptTag ? scriptTag.getAttribute("data-widget-base") : null;
+  const scriptSrc = scriptTag?.src;
+  const WIDGET_BASE = (explicitBase && explicitBase.trim()) ? explicitBase.trim().replace(/\/?$/, "/") : (scriptSrc ? scriptSrc.replace(/\/[^/]*$/, "/") : "");
+
+  // API URL for Supabase Edge Function (chatbot-api)
+  const explicitApiUrl = scriptTag ? scriptTag.getAttribute("data-api-url") : null;
+  const API_URL = (explicitApiUrl && explicitApiUrl.trim())
+    || "https://pmzhsxlsnxvpzkiflxww.supabase.co/functions/v1/chatbot-api";
+  const scriptTheme = scriptTag ? scriptTag.getAttribute("data-theme") : null;
+  const scriptPosition = scriptTag ? scriptTag.getAttribute("data-position") : null;
+  const normalizePosition = (value) => value === "bottom-left" ? "bottom-left" : "bottom-right";
+
+  // Conversation and customer state shared across widget
+  let currentConversationId = null;
+  let currentCustomerPhone = null;
+  let remoteWidgetConfig = {};
+  let applyRemoteConfig = null;
 
   console.log("Widget loaded for store:", storeId);
+  console.log("Using chatbot API URL:", API_URL);
 
+  /** True when running inside widget-frame iframe (Salla/Zid loader); host uses pointer-events bridge. */
+  const IS_FUGAH_IFRAME_EMBED = (function () {
+    try {
+      return window.parent !== window.self;
+    } catch (e) {
+      return true;
+    }
+  })();
+
+  function notifyParentActive() {
+    if (typeof window.fuqahActivate === "function") window.fuqahActivate();
+    else if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "fuqah:active" }, "*");
+    }
+  }
+
+  function notifyParentInactive() {
+    if (typeof window.fuqahDeactivate === "function") window.fuqahDeactivate();
+    else if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "fuqah:inactive" }, "*");
+    }
+  }
 
   // ========================================
   // END STORE ID CONFIGURATION FUNCTIONALITY
@@ -26,23 +85,150 @@
   // Create wrapper element and attach shadow DOM for style isolation
   const wrapper = document.createElement("div");
   wrapper.id = "chatbot-widget-root";
+  wrapper.setAttribute("dir", "ltr"); // isolate from page: widget is LTR unless data-rtl says otherwise
+  wrapper.setAttribute("data-fugah-version", "2.0-zid"); // verify: document.querySelector('#chatbot-widget-root')?.getAttribute('data-fugah-version')
+  wrapper.setAttribute("data-position", normalizePosition(scriptPosition));
   document.body.appendChild(wrapper);
+  const WIDGET_BOTTOM_OFFSET_VAR = "--fugah-widget-bottom-offset";
+  const WIDGET_SIDE_MARGIN = 16;
+  const MAX_HOST_OVERLAY_HEIGHT = 220;
+  wrapper.style.setProperty(WIDGET_BOTTOM_OFFSET_VAR, `${WIDGET_SIDE_MARGIN}px`);
 
-  // API call to n8n webhook (for future integration)
-  fetch("https://n8n.srv1196634.hstgr.cloud/webhook/user", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    // body: JSON.stringify({ message: "hello" })
-  })
-  .then(async res => {
-    const text = await res.text();
-    console.log("Status:", res.status);
-  //  console.log("Body:", text);
-  })
-  .catch(console.error);
+  // Scan host page for visible fixed/sticky bars anchored to the bottom (e.g. Zid/Salla buy bars).
+  const getHostBottomBarHeight = () => {
+    if (!document.body) return 0;
+    const vH = window.innerHeight || document.documentElement.clientHeight || 0;
+    const vW = window.innerWidth || document.documentElement.clientWidth || 0;
+    let maxH = 0;
+
+    // Zid product page: explicit detection for #sticky-cta (product bar with thumbnail, price, Add to Cart)
+    const stickyCta = document.getElementById("sticky-cta") || document.querySelector("[data-sticky-cta]");
+    if (stickyCta) {
+      const cs = window.getComputedStyle(stickyCta);
+      if (cs && cs.display !== "none" && cs.visibility !== "hidden" && parseFloat(cs.opacity || "1") > 0) {
+        const rect = stickyCta.getBoundingClientRect();
+        // Include bar if: at/near bottom, or fixed at bottom (rect can be off-screen during animation)
+        const isAtBottom = rect.bottom >= vH - 20 || (cs.position === "fixed" && rect.height >= 24);
+        if (rect && rect.height >= 24 && isAtBottom) {
+          maxH = Math.max(maxH, Math.min(rect.height, MAX_HOST_OVERLAY_HEIGHT));
+        }
+      }
+    }
+
+    const minW = Math.max(60, Math.floor(vW * 0.25));
+    const elements = document.body.querySelectorAll("*");
+    for (const el of elements) {
+      if (el === wrapper || wrapper.contains(el)) continue;
+      const cs = window.getComputedStyle(el);
+      if (!cs || cs.display === "none" || cs.visibility === "hidden") continue;
+      if (parseFloat(cs.opacity || "1") === 0) continue;
+      if (cs.position !== "fixed" && cs.position !== "sticky") continue;
+      const rect = el.getBoundingClientRect();
+      if (!rect || rect.width < minW || rect.height < 24 || rect.height > MAX_HOST_OVERLAY_HEIGHT) continue;
+      if (rect.bottom < vH - 8) continue;
+      maxH = Math.max(maxH, rect.height);
+    }
+    return Math.min(maxH, MAX_HOST_OVERLAY_HEIGHT);
+  };
+
+  // Get current visual keyboard height (0 when keyboard is closed).
+  const getKeyboardHeight = () => {
+    if (!window.visualViewport) return 0;
+    const kh = window.innerHeight - window.visualViewport.height - (window.visualViewport.offsetTop || 0);
+    return Math.max(0, kh);
+  };
+
+  // Compute and apply the correct bottom offset for bubble + chat window.
+  // Priority: if keyboard is open → sit above keyboard; else → sit above host sticky bar.
+  // On narrow/touch screens use a minimum offset so we never overlap Zid/Salla buy bars
+  // even when getHostBottomBarHeight() misses (e.g. bar not fixed/sticky or not yet in DOM).
+  const refreshWidgetBottomOffset = () => {
+    const kbH = getKeyboardHeight();
+    const barH = kbH > 0 ? 0 : getHostBottomBarHeight();
+    const vW = window.innerWidth || document.documentElement.clientWidth || 0;
+    const isNarrowOrTouch = (vW <= 480) || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+    // Zid product page fallback: use higher min when on *.zid.store/products/* (sticky bar ~80-100px)
+    const isZidProductPage = typeof window !== "undefined" && window.location && /zid\.store\/products\//i.test(window.location.href);
+    const minBottom = isZidProductPage ? 120 : (isNarrowOrTouch ? 80 : WIDGET_SIDE_MARGIN);
+    const nextOffset = Math.max(minBottom, WIDGET_SIDE_MARGIN + (kbH > 0 ? kbH : barH));
+    wrapper.style.setProperty(WIDGET_BOTTOM_OFFSET_VAR, `${nextOffset}px`);
+  };
+  refreshWidgetBottomOffset();
+
+  // Initial config load from Supabase Edge Function (if available)
+  if (API_URL && storeId) {
+    fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storeId, action: "get_config" })
+    })
+    .then(async res => {
+      const text = await res.text();
+      console.log("Config load status:", res.status);
+      try {
+        const config = JSON.parse(text);
+        if (config && typeof config === "object") remoteWidgetConfig = config;
+        if (typeof applyRemoteConfig === "function") applyRemoteConfig();
+        console.log("Widget config:", config);
+      } catch (e) {
+        // Response body is not JSON or config parsing failed; ignore gracefully.
+      }
+    })
+    .catch(err => {
+      console.error("Failed to load widget config:", err);
+    });
+  }
   
   const shadow = wrapper.attachShadow({ mode: "open" }); // Create shadow DOM
 
+  // Critical fallback styles: show launcher immediately while full CSS loads.
+  const criticalStyle = document.createElement("style");
+  criticalStyle.textContent = ":host{--fugah-widget-bottom-offset:16px}#chat-bubble{position:fixed;bottom:var(--fugah-widget-bottom-offset,16px);right:16px;width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;background:#222;transition:bottom .18s ease,transform .18s ease;will-change:bottom,transform}#chat-bubble img{width:100%;height:100%;object-fit:cover}:host([data-position=\"bottom-left\"]) #chat-bubble{left:16px;right:auto}";
+  shadow.appendChild(criticalStyle);
+
+  // ========================================
+  // iOS VIEWPORT HEIGHT CSS VARIABLE (--vh)
+  // ========================================
+  // Set --vh on document root for correct height when iOS keyboard opens.
+  // visualViewport.height reflects actual visible area; innerHeight does not.
+  const updateViewportHeightVar = () => {
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    document.documentElement.style.setProperty("--vh", `${vh}px`);
+  };
+  updateViewportHeightVar();
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", updateViewportHeightVar, { passive: true });
+    window.visualViewport.addEventListener("scroll", updateViewportHeightVar, { passive: true });
+    // Keyboard detection: update bubble position whenever visualViewport resizes
+    window.visualViewport.addEventListener("resize", refreshWidgetBottomOffset, { passive: true });
+    window.visualViewport.addEventListener("scroll", refreshWidgetBottomOffset, { passive: true });
+  }
+  window.addEventListener("resize", updateViewportHeightVar);
+  window.addEventListener("orientationchange", updateViewportHeightVar);
+  window.addEventListener("resize", refreshWidgetBottomOffset, { passive: true });
+  window.addEventListener("orientationchange", refreshWidgetBottomOffset, { passive: true });
+  // When ANY host-page input is focused/blurred, re-check keyboard + sticky-bar height
+  document.addEventListener("focusin", refreshWidgetBottomOffset, { passive: true });
+  document.addEventListener("focusout", () => setTimeout(refreshWidgetBottomOffset, 80), { passive: true });
+
+  // Zid: Re-check when #sticky-cta may appear (product page loads bar on scroll or dynamically)
+  const observeStickyCta = () => {
+    const stickyCta = document.getElementById("sticky-cta");
+    if (stickyCta && !stickyCta.dataset.fugahObserved) {
+      stickyCta.dataset.fugahObserved = "1";
+      const obs = new MutationObserver(() => refreshWidgetBottomOffset());
+      obs.observe(stickyCta, { attributes: true, attributeFilter: ["class", "style", "aria-hidden"] });
+    }
+    refreshWidgetBottomOffset();
+  };
+  setTimeout(observeStickyCta, 500);
+  setTimeout(observeStickyCta, 2000);
+  // Zid: Sticky bar often appears when user scrolls - re-check on scroll
+  let scrollCheckTimeout = null;
+  window.addEventListener("scroll", () => {
+    if (scrollCheckTimeout) clearTimeout(scrollCheckTimeout);
+    scrollCheckTimeout = setTimeout(refreshWidgetBottomOffset, 100);
+  }, { passive: true });
 
   // ========================================
   // END SHADOW DOM SETUP FUNCTIONALITY
@@ -52,10 +238,10 @@
   // ========================================
   // CSS LOADING FUNCTIONALITY
   // ========================================
-  // Load CSS stylesheet into shadow DOM
+  // Load CSS from script origin so Salla/other domains get it from your CDN
   const style = document.createElement("link");
   style.rel = "stylesheet";
-  style.href = "widget.css"; // CSS file path
+  style.href = WIDGET_BASE + "widget.css";
   shadow.appendChild(style);
 
 
@@ -67,10 +253,18 @@
   // ========================================
   // HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
   // ========================================
-  // Load HTML template and initialize all DOM elements
-  fetch("ui.html") // Load HTML template
-        .then(res => res.text())
+  // Load HTML template and initialize all DOM elements.
+  // Build pipeline replaces "__UI_HTML_INLINED__" with actual HTML for zero extra request startup.
+  Promise.resolve("__UI_HTML_INLINED__")
         .then(html => {
+          if (html === "__UI_HTML_INLINED__") {
+            return fetch(WIDGET_BASE + "ui.html").then(r => r.text());
+          }
+          return html;
+        })
+        .then(html => {
+      // Resolve relative asset URLs so they load from script origin (Salla/embed fix)
+      if (WIDGET_BASE) html = html.replace(/src="\.\.\/assets\//g, "src=\"" + WIDGET_BASE + "assets/");
       shadow.innerHTML += html; // Inject HTML into shadow DOM
 
       // Select all required DOM elements from shadow DOM
@@ -115,7 +309,40 @@
           const noMessagesEmptyState = shadow.querySelector("#no-messages-empty-state");
           const footerTabItems = shadow.querySelectorAll(".fugah-footer-tab-item");
           const fugahFooter = shadow.querySelector("#fugah-footer");
-          
+
+          const rtl = ((scriptTag ? scriptTag.getAttribute("data-rtl") : null) || "").toLowerCase();
+          const useRtl = rtl === "true" || rtl === "1" || rtl === "yes" || rtl === "ar";
+          if (chatWindow) chatWindow.setAttribute("dir", useRtl ? "rtl" : "ltr");
+          const getResolvedPosition = () => normalizePosition(
+            (remoteWidgetConfig && remoteWidgetConfig.position)
+            || scriptPosition
+            || "bottom-right"
+          );
+          const applyWidgetPosition = () => {
+            const position = getResolvedPosition();
+            wrapper.setAttribute("data-position", position);
+            if (!chatWindow) return;
+            if (position === "bottom-left") {
+              chatWindow.style.setProperty("left", "20px", "important");
+              chatWindow.style.setProperty("right", "auto", "important");
+            } else {
+              chatWindow.style.setProperty("right", "20px", "important");
+              chatWindow.style.setProperty("left", "auto", "important");
+            }
+          };
+          applyWidgetPosition();
+          refreshWidgetBottomOffset();
+          // Re-run after page content finishes rendering (host bars may appear late)
+          if (typeof MutationObserver !== "undefined") {
+            const hostOverlayObserver = new MutationObserver(refreshWidgetBottomOffset);
+            hostOverlayObserver.observe(document.body, {
+              childList: true,
+              subtree: false,
+              attributes: false
+            });
+          }
+          setTimeout(refreshWidgetBottomOffset, 600);
+          setTimeout(refreshWidgetBottomOffset, 2000);
 
       // ========================================
       // END HTML LOADING AND DOM ELEMENT SELECTION FUNCTIONALITY
@@ -126,10 +353,7 @@
       // ASSET PATH HELPER FUNCTIONALITY
       // ========================================
       // Helper function to get correct asset paths in shadow DOM
-          const getAssetPath = (filename) => {
-            // Since we're at /test/index.html, assets are at ../assets/
-            return `../assets/${filename}`;
-          };
+          const getAssetPath = (filename) => WIDGET_BASE + "assets/" + filename;
           
 
       // ========================================
@@ -238,28 +462,28 @@
           let backgroundImagePath;
           switch(themeName) {
             case 'green':
-              backgroundImagePath = "url('assets/main-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-bg.png") + "')";
               break;
             case 'red':
-              backgroundImagePath = "url('assets/main-red-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-red-bg.png") + "')";
               break;
             case 'blue':
-              backgroundImagePath = "url('assets/main-blue-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-blue-bg.png") + "')";
               break;
             case 'yellow':
-              backgroundImagePath = "url('assets/main-yellow-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-yellow-bg.png") + "')";
               break;
             case 'cyan':
-              backgroundImagePath = "url('assets/main-cyan-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-cyan-bg.png") + "')";
               break;
             case 'black':
-              backgroundImagePath = "url('assets/main-black-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-black-bg.png") + "')";
               break;
             case 'white':
-              backgroundImagePath = "url('assets/main-white-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-white-bg.png") + "')";
               break;
             default:
-              backgroundImagePath = "url('assets/main-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-bg.png") + "')";
               break;
           }
           fugahBody.style.removeProperty("background-image");
@@ -267,28 +491,31 @@
           console.log('Restored background image:', backgroundImagePath);
         }
         
-        // Remove scroll locks
-        document.body.classList.remove('chat-open');
-        document.documentElement.classList.remove('chat-open');
-        document.body.style.overflow = '';
-        document.documentElement.style.overflow = '';
-        
-        // Remove touch event listeners
-        if (window.fugahBackgroundScrollPrevention) {
-          document.removeEventListener('touchmove', window.fugahBackgroundScrollPrevention, { capture: true });
-          document.removeEventListener('touchstart', window.fugahBackgroundScrollPrevention, { capture: true });
-          document.body.removeEventListener('touchmove', window.fugahBackgroundScrollPrevention);
-          document.body.removeEventListener('touchstart', window.fugahBackgroundScrollPrevention);
-          window.fugahBackgroundScrollPrevention = undefined;
+        // Remove scroll locks (skip in iframe embed — host page is not this document)
+        if (!IS_FUGAH_IFRAME_EMBED) {
+          document.body.classList.remove('chat-open');
+          document.documentElement.classList.remove('chat-open');
+          document.body.style.overflow = '';
+          document.documentElement.style.overflow = '';
+          
+          // Remove touch event listeners
+          if (window.fugahBackgroundScrollPrevention) {
+            document.removeEventListener('touchmove', window.fugahBackgroundScrollPrevention, { capture: true });
+            document.removeEventListener('touchstart', window.fugahBackgroundScrollPrevention, { capture: true });
+            document.body.removeEventListener('touchmove', window.fugahBackgroundScrollPrevention);
+            document.body.removeEventListener('touchstart', window.fugahBackgroundScrollPrevention);
+            window.fugahBackgroundScrollPrevention = undefined;
+          }
+          
+          // Restore scroll position
+          const scrollY = window.fugahChatScrollPosition || 0;
+          window.scrollTo(0, scrollY);
+          window.fugahChatScrollPosition = undefined;
         }
-        
-        // Restore scroll position
-        const scrollY = window.fugahChatScrollPosition || 0;
-        window.scrollTo(0, scrollY);
-        window.fugahChatScrollPosition = undefined;
         
         // Reset state
         isOpen = false;
+        notifyParentInactive();
         
         console.log('forceCloseChat completed - bubble and background should be visible');
       };
@@ -368,8 +595,8 @@
         // ========================================
         // When chat window is open, prevent the background page (images/content behind chat)
         // from scrolling on all devices (desktop, mobile, tablets)
-        // This ensures the background remains static while user interacts with chat
-        if (isOpen) {
+        // Skip on iframe embed: store page is behind transparent iframe; loader handles input.
+        if (!IS_FUGAH_IFRAME_EMBED && isOpen) {
           // Store current scroll position before preventing scroll
           // This allows us to restore the exact scroll position when chat closes
           // Using multiple fallbacks for cross-browser compatibility
@@ -383,6 +610,12 @@
           // Prevent scrolling via overflow only (position:fixed on body breaks background on Safari and others)
           document.body.style.overflow = 'hidden';
           document.documentElement.style.overflow = 'hidden';
+          // Lock Salla's scroll container if it uses a different element (e.g. #app, .main)
+          const scrollEl = document.scrollingElement || document.documentElement;
+          if (scrollEl && scrollEl !== document.body) {
+            scrollEl.style.overflow = 'hidden';
+            scrollEl.dataset.fugahScrollLock = '1';
+          }
           
           // ========================================
           // MOBILE-SPECIFIC: Additional touch scroll prevention
@@ -390,10 +623,17 @@
           // On mobile devices, add touch event listeners to prevent background scrolling
           // This is especially important for iOS Safari which can still scroll with touch gestures
           const preventBackgroundScroll = (e) => {
-            // Only prevent if touch is outside the chat window
-            // Note: chatWindow is in shadow DOM, so we check if target is inside the wrapper
             const widgetRoot = document.querySelector('#chatbot-widget-root');
-            if (widgetRoot && !widgetRoot.contains(e.target)) {
+            if (!widgetRoot) return;
+            const path = e.composedPath ? e.composedPath() : [];
+            const insideWidget = path.length ? path.includes(widgetRoot) : widgetRoot.contains(e.target);
+            // When touch is inside widget but on non-scrollable area (header, input, footer),
+            // the browser scrolls the Salla page behind. Prevent that.
+            const scrollableSelectors = ['.message-detail-messages', '.main-message-container', '.country-list', '#rating-messages'];
+            const scrollableEls = scrollableSelectors.map(s => shadow.querySelector(s)).filter(Boolean);
+            const onScrollable = scrollableEls.some(el => path.includes(el) || el.contains(e.target));
+            const shouldPrevent = !insideWidget || (insideWidget && !onScrollable);
+            if (shouldPrevent) {
               e.preventDefault();
               e.stopPropagation();
               return false;
@@ -409,7 +649,7 @@
           document.addEventListener('touchstart', preventBackgroundScroll, { passive: false, capture: true });
           document.body.addEventListener('touchmove', preventBackgroundScroll, { passive: false });
           document.body.addEventListener('touchstart', preventBackgroundScroll, { passive: false });
-        } else {
+        } else if (!IS_FUGAH_IFRAME_EMBED) {
           // Restore scrolling when chat is closed
           // Get the stored scroll position (default to 0 if not set)
           const scrollY = window.fugahChatScrollPosition || 0;
@@ -428,6 +668,11 @@
           
           document.body.style.overflow = '';
           document.documentElement.style.overflow = '';
+          const scrollEl = document.scrollingElement || document.documentElement;
+          if (scrollEl && scrollEl.dataset.fugahScrollLock === '1') {
+            scrollEl.style.overflow = '';
+            delete scrollEl.dataset.fugahScrollLock;
+          }
           window.scrollTo(0, scrollY);
           window.fugahChatScrollPosition = undefined;
         }
@@ -443,14 +688,20 @@
         // ========================================
         // Helper function to check if device is mobile (max-width: 767px)
         const checkIsMobile = () => {
+          const ua = navigator.userAgent || "";
+          const minScreenSide = Math.min(window.screen?.width || window.innerWidth, window.screen?.height || window.innerHeight);
+          const isIOSPhone = /iPhone|iPod/i.test(ua) || (/Mac/i.test(navigator.platform || "") && navigator.maxTouchPoints > 1 && minScreenSide <= 430);
+          const isCoarsePointer = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
           // Check both window width and matchMedia for better mobile detection
           const width = window.innerWidth;
           const isMobileWidth = width <= 767;
           const isMobileMedia = window.matchMedia && window.matchMedia('(max-width: 767px)').matches;
-          const isMobile = isMobileWidth || isMobileMedia;
+          const isMobile = isMobileWidth || isMobileMedia || isIOSPhone || (isCoarsePointer && minScreenSide <= 430);
           console.log('Mobile check - width:', width, 'isMobileWidth:', isMobileWidth, 'isMobileMedia:', isMobileMedia, 'isMobile:', isMobile);
           return isMobile;
         };
+
+        const checkIsIOS = () => /iPad|iPhone|iPod/i.test(navigator.userAgent || "") || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
         // Helper function to check if device is tablet (600px to 991px)
         // Tablets include iPads and Android tablets
@@ -480,19 +731,15 @@
         // END DEVICE DETECTION FUNCTIONS
         // ========================================
 
-        // Function to get dynamic viewport height that accounts for browser bars
+        // Function to get dynamic viewport height that accounts for browser bars and keyboard
         const getDynamicViewportHeight = () => {
-          // Use window.innerHeight which accounts for browser UI bars
-          // This is more reliable than 100vh on mobile browsers
-          const height = window.innerHeight;
-          
-          // For iOS Safari, also check visualViewport if available
+          // On iOS Safari, window.innerHeight does NOT shrink when the keyboard opens.
+          // visualViewport.height DOES reflect the actual visible area.
+          // Use visualViewport.height when available for correct mobile/keyboard behavior.
           if (window.visualViewport && window.visualViewport.height) {
-            // Use the larger value to ensure full coverage
-            return Math.max(height, window.visualViewport.height);
+            return window.visualViewport.height;
           }
-          
-          return height;
+          return window.innerHeight;
         };
 
         // ========================================
@@ -519,32 +766,26 @@
             // Mobile: max-width: 767px (fullscreen behavior)
             // Tablets: 600px to 991px (iPads, Android tablets - normal window size)
             // Combined check: max-width: 991px covers both
-            if (isOpen && checkIsMobileOrTablet()) {
+            if (isOpen && (checkIsMobileOrTablet() || checkIsIOS())) {
               // Determine if device is mobile or tablet for different behavior
               const isMobile = checkIsMobile();
-              const isTablet = checkIsTablet();
+              const isTablet = !isMobile && checkIsTablet();
               
               // Use visualViewport API to detect keyboard and position accordingly
               if (window.visualViewport) {
                 const viewportHeight = window.visualViewport.height;
                 const viewportOffsetTop = window.visualViewport.offsetTop || 0;
-                
-                // When keyboard is open, visualViewport.offsetTop will be > 0
-                if (viewportOffsetTop > 0) {
-                  // Keyboard is open - use window.innerHeight which is most accurate
-                  // window.innerHeight gives the actual visible area above keyboard
+                // Keyboard is open when viewport shrinks (iOS) or offsetTop > 0 (Android)
+                const keyboardLikelyOpen = viewportOffsetTop > 0 || viewportHeight < window.innerHeight * 0.85;
+                if (keyboardLikelyOpen) {
+                  // Use visualViewport.height - on iOS, innerHeight does NOT shrink when keyboard opens
                   const getKeyboardOpenHeight = () => {
                     return new Promise((resolve) => {
-                      // Get height immediately
-                      const immediateHeight = window.innerHeight;
-                      
-                      // Then check again after keyboard fully opens
+                      const immediateHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                       setTimeout(() => {
-                        const height1 = window.innerHeight;
-                        // Check one more time to ensure accuracy
+                        const height1 = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                         setTimeout(() => {
-                          const height2 = window.innerHeight;
-                          // Use the smallest value to ensure no gap
+                          const height2 = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                           const finalHeight = Math.min(immediateHeight, height1, height2);
                           resolve(finalHeight);
                         }, 200);
@@ -552,8 +793,7 @@
                     });
                   };
                   
-                  // Set initial height immediately using window.innerHeight (most accurate)
-                  const initialHeight = window.innerHeight;
+                  const initialHeight = viewportHeight;
                   
                   // Check if iOS for special handling
                   const isIOS = checkIsIOS();
@@ -565,15 +805,17 @@
                     // ========================================
                     // MOBILE KEYBOARD HANDLING (max-width: 767px)
                     // ========================================
-                    // Mobile: Fullscreen behavior - chat window takes full viewport
-                    // CRITICAL: Remove inset and bottom to prevent gap - only use top positioning
+                    // Use --vh CSS variable (updated by visualViewport) for correct height
+                    // Pin to bottom so input stays visible above keyboard
+                    updateViewportHeightVar();
                     chatWindow.style.setProperty("inset", "unset", "important");
                     chatWindow.style.removeProperty("inset");
-                    chatWindow.style.removeProperty("bottom"); // Don't set bottom - causes gap
-                    chatWindow.style.setProperty("top", "0", "important");
+                    chatWindow.style.removeProperty("top");
+                    chatWindow.style.setProperty("position", "fixed", "important");
+                    chatWindow.style.setProperty("bottom", "0", "important");
                     chatWindow.style.setProperty("left", "0", "important");
                     chatWindow.style.setProperty("right", "0", "important");
-                    chatWindow.style.setProperty("height", `${initialHeight}px`, "important");
+                    chatWindow.style.setProperty("height", "var(--vh, 100dvh)", "important");
                     chatWindow.style.setProperty("width", "100vw", "important");
                     
                     // ========================================
@@ -591,7 +833,7 @@
                     // Tablet: Keep normal window position and size, only adjust height
                     // Tablets maintain their fixed position (bottom: 20px, right: 20px)
                     // Only reduce height to account for keyboard, keeping width at 390px
-                    const keyboardHeight = window.innerHeight;
+                    const keyboardHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                     // Calculate available height above keyboard
                     // For tablets, we want to keep the window in its normal position
                     // but reduce its height so input area is visible above keyboard
@@ -600,11 +842,16 @@
                     chatWindow.style.setProperty("max-height", `${maxTabletHeight}px`, "important");
                     // Keep normal tablet positioning (don't go fullscreen)
                     chatWindow.style.setProperty("position", "fixed", "important");
-                    chatWindow.style.setProperty("bottom", "20px", "important");
-                    chatWindow.style.setProperty("right", "20px", "important");
+                    chatWindow.style.setProperty("bottom", "var(--fugah-widget-bottom-offset, 20px)", "important");
                     chatWindow.style.setProperty("width", "390px", "important");
                     chatWindow.style.setProperty("top", "auto", "important");
-                    chatWindow.style.setProperty("left", "auto", "important");
+                    if (getResolvedPosition() === "bottom-left") {
+                      chatWindow.style.setProperty("left", "20px", "important");
+                      chatWindow.style.setProperty("right", "auto", "important");
+                    } else {
+                      chatWindow.style.setProperty("right", "20px", "important");
+                      chatWindow.style.setProperty("left", "auto", "important");
+                    }
                   }
                   
                   // Update to correct height after keyboard fully opens (fixes first-time gap)
@@ -628,25 +875,26 @@
                         }
                       }
                       
-                      // Remove inset again when updating height (browser may regenerate it)
+                      // Update --vh for CSS; keep bottom:0 positioning
+                      document.documentElement.style.setProperty("--vh", `${finalHeight}px`);
                       chatWindow.style.setProperty("inset", "unset", "important");
                       chatWindow.style.removeProperty("inset");
-                      chatWindow.style.removeProperty("bottom");
-                      chatWindow.style.setProperty("height", `${finalHeight}px`, "important");
-                      chatWindow.style.setProperty("max-height", `${finalHeight}px`, "important");
+                      chatWindow.style.removeProperty("top");
+                      chatWindow.style.setProperty("bottom", "0", "important");
+                      chatWindow.style.setProperty("height", "var(--vh, 100dvh)", "important");
+                      chatWindow.style.setProperty("max-height", "var(--vh, 100dvh)", "important");
                       // Ensure no bottom spacing
                       chatWindow.style.setProperty("padding-bottom", "0", "important");
                       chatWindow.style.setProperty("margin-bottom", "0", "important");
                       console.log('Mobile - Keyboard open - final height set to:', finalHeight);
                       
-                      // Final check after a delay to ensure no gap
+                      // Final check after a delay to ensure no gap (use visualViewport on iOS)
                       setTimeout(() => {
-                        const finalCheck = window.innerHeight;
+                        const finalCheck = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                         const adjustedHeight = Math.max(finalCheck - 1, 300);
                         if (Math.abs(finalCheck - finalHeight) > 5) {
-                          chatWindow.style.setProperty("height", `${adjustedHeight}px`, "important");
-                          chatWindow.style.setProperty("max-height", `${adjustedHeight}px`, "important");
-                          console.log('Mobile - Keyboard open - adjusted height to:', adjustedHeight);
+                          document.documentElement.style.setProperty("--vh", `${adjustedHeight}px`);
+                          console.log('Mobile - Keyboard open - adjusted --vh to:', adjustedHeight);
                         }
                       }, 100);
                     } else if (isTablet) {
@@ -660,9 +908,9 @@
                       chatWindow.style.setProperty("max-height", `${maxTabletHeight}px`, "important");
                       console.log('Tablet - Keyboard open - height set to:', maxTabletHeight);
                       
-                      // Final check after a delay for tablets
+                      // Final check after a delay for tablets (use visualViewport on iOS)
                       setTimeout(() => {
-                        const finalCheck = window.innerHeight;
+                        const finalCheck = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                         const adjustedTabletHeight = Math.min(finalCheck - 40, 670);
                         if (Math.abs(finalCheck - correctHeight) > 5) {
                           chatWindow.style.setProperty("height", `${adjustedTabletHeight}px`, "important");
@@ -679,17 +927,18 @@
                   // KEYBOARD CLOSED - Restore normal sizing
                   // ========================================
                   if (isMobile) {
-                    // Mobile: Restore fullscreen viewport
-                    const dynamicHeight = getDynamicViewportHeight();
-                    // Remove inset to prevent browser auto-generation
+                    // Mobile: Use --vh for fullscreen; pin to bottom for consistency
+                    updateViewportHeightVar();
                     chatWindow.style.setProperty("inset", "unset", "important");
                     chatWindow.style.removeProperty("inset");
-                    chatWindow.style.setProperty("top", "0", "important");
+                    chatWindow.style.removeProperty("top");
+                    chatWindow.style.setProperty("position", "fixed", "important");
+                    chatWindow.style.setProperty("bottom", "0", "important");
                     chatWindow.style.setProperty("left", "0", "important");
                     chatWindow.style.setProperty("right", "0", "important");
-                    chatWindow.style.setProperty("bottom", "0", "important");
                     chatWindow.style.setProperty("width", "100vw", "important");
-                    chatWindow.style.setProperty("height", `${dynamicHeight}px`, "important");
+                    chatWindow.style.setProperty("height", "var(--vh, 100dvh)", "important");
+                    chatWindow.style.removeProperty("max-height");
                     
                     // ========================================
                     // iOS-SPECIFIC: Show footer again when keyboard closes
@@ -709,10 +958,15 @@
                     chatWindow.style.setProperty("max-height", "90vh", "important");
                     chatWindow.style.setProperty("width", "390px", "important");
                     chatWindow.style.setProperty("position", "fixed", "important");
-                    chatWindow.style.setProperty("bottom", "20px", "important");
-                    chatWindow.style.setProperty("right", "20px", "important");
+                    chatWindow.style.setProperty("bottom", "var(--fugah-widget-bottom-offset, 20px)", "important");
                     chatWindow.style.setProperty("top", "auto", "important");
-                    chatWindow.style.setProperty("left", "auto", "important");
+                    if (getResolvedPosition() === "bottom-left") {
+                      chatWindow.style.setProperty("left", "20px", "important");
+                      chatWindow.style.setProperty("right", "auto", "important");
+                    } else {
+                      chatWindow.style.setProperty("right", "20px", "important");
+                      chatWindow.style.setProperty("left", "auto", "important");
+                    }
                     console.log('Tablet - Keyboard closed - restored to normal size');
                   }
                 }
@@ -720,17 +974,16 @@
                 // ========================================
                 // FALLBACK: Browsers without visualViewport support
                 // ========================================
-                // Use window.innerHeight as fallback for both mobile and tablets
-                const dynamicHeight = getDynamicViewportHeight();
                 const isMobile = checkIsMobile();
                 const isTablet = checkIsTablet();
                 
                 if (isMobile) {
-                  // Mobile fallback: fullscreen
-                  chatWindow.style.setProperty("height", `${dynamicHeight}px`, "important");
-                  chatWindow.style.setProperty("top", "0", "important");
+                  // Mobile fallback: use innerHeight for --vh
+                  const h = window.innerHeight;
+                  document.documentElement.style.setProperty("--vh", `${h}px`);
                   chatWindow.style.setProperty("bottom", "0", "important");
-                  console.log('Mobile fallback - Updated height to:', dynamicHeight);
+                  chatWindow.style.setProperty("height", "var(--vh, 100dvh)", "important");
+                  console.log('Mobile fallback - Updated --vh to:', h);
                 } else if (isTablet) {
                   // Tablet fallback: normal size
                   chatWindow.style.setProperty("height", "670px", "important");
@@ -842,7 +1095,7 @@
             
             if (mobileBackgroundMap[themeName]) {
               console.log(`Setting mobile background for ${themeName} theme`);
-              chatWindow.style.setProperty("background-image", `url(/assets/${mobileBackgroundMap[themeName]})`, "important");
+              chatWindow.style.setProperty("background-image", "url(" + getAssetPath(mobileBackgroundMap[themeName]) + ")", "important");
               chatWindow.style.setProperty("background-size", "cover", "important");
               chatWindow.style.setProperty("background-position", "center", "important");
               chatWindow.style.setProperty("background-repeat", "no-repeat", "important");
@@ -851,110 +1104,34 @@
             // Make chat-window fullscreen with no border-radius and full height (mobile only)
             console.log('Setting fullscreen styles');
             
-            // Position chat window based on visualViewport (accounts for keyboard)
+            // Position chat window using --vh (updated by visualViewport); pin to bottom for iOS
             const positionChatWindow = () => {
-              if (window.visualViewport) {
-                const viewportHeight = window.visualViewport.height;
-                const viewportOffsetTop = window.visualViewport.offsetTop || 0;
-                
-                // When keyboard is open, visualViewport.offsetTop will be > 0
-                if (viewportOffsetTop > 0) {
-                  // Keyboard is open - use window.innerHeight which is most accurate
-                  // window.innerHeight gives the actual visible area above keyboard
-                  const getKeyboardOpenHeight = () => {
-                    return new Promise((resolve) => {
-                      // Get height immediately
-                      const immediateHeight = window.innerHeight;
-                      
-                      // Then check again after keyboard fully opens
-                      setTimeout(() => {
-                        const height1 = window.innerHeight;
-                        // Check one more time to ensure accuracy
-                        setTimeout(() => {
-                          const height2 = window.innerHeight;
-                          // Use the smallest value to ensure no gap
-                          const finalHeight = Math.min(immediateHeight, height1, height2);
-                          resolve(finalHeight);
-                        }, 200);
-                      }, 300);
-                    });
-                  };
-                  
-                  // Set initial height immediately using window.innerHeight (most accurate)
-                  // Subtract 1px to account for any rounding/border issues and ensure no gap
-                  const initialHeight = Math.max(window.innerHeight - 1, 300);
-                  
-                  // CRITICAL: Remove inset and bottom to prevent gap - only use top positioning
-                  chatWindow.style.setProperty("inset", "unset", "important");
-                  chatWindow.style.removeProperty("inset");
-                  chatWindow.style.removeProperty("bottom"); // Don't set bottom - causes gap
-                  chatWindow.style.setProperty("top", "0", "important");
-                  chatWindow.style.setProperty("left", "0", "important");
-                  chatWindow.style.setProperty("right", "0", "important");
-                  chatWindow.style.setProperty("height", `${initialHeight}px`, "important");
-                  chatWindow.style.setProperty("width", "100vw", "important");
-                  chatWindow.style.setProperty("max-height", `${initialHeight}px`, "important");
-                  // Ensure no bottom spacing
-                  chatWindow.style.setProperty("padding-bottom", "0", "important");
-                  chatWindow.style.setProperty("margin-bottom", "0", "important");
-                  
-                  // Update to correct height after keyboard fully opens (fixes first-time gap)
-                  getKeyboardOpenHeight().then((correctHeight) => {
-                    // Subtract 1px to ensure no gap (accounts for rounding/borders)
-                    const finalHeight = Math.max(correctHeight - 1, 300);
-                    
-                    // Remove inset again when updating height (browser may regenerate it)
-                    chatWindow.style.setProperty("inset", "unset", "important");
-                    chatWindow.style.removeProperty("inset");
-                    chatWindow.style.removeProperty("bottom");
-                    chatWindow.style.setProperty("height", `${finalHeight}px`, "important");
-                    chatWindow.style.setProperty("max-height", `${finalHeight}px`, "important");
-                    // Ensure no bottom spacing
-                    chatWindow.style.setProperty("padding-bottom", "0", "important");
-                    chatWindow.style.setProperty("margin-bottom", "0", "important");
-                    
-                    // Final check after a delay to ensure no gap
-                    setTimeout(() => {
-                      const finalCheck = window.innerHeight;
-                      const adjustedHeight = Math.max(finalCheck - 1, 300);
-                      if (Math.abs(finalCheck - finalHeight) > 5) {
-                        chatWindow.style.setProperty("height", `${adjustedHeight}px`, "important");
-                        chatWindow.style.setProperty("max-height", `${adjustedHeight}px`, "important");
-                      }
-                    }, 100);
-                  });
-                } else {
-                  // Keyboard is closed - use full viewport
-                  const dynamicHeight = getDynamicViewportHeight();
-                  // Remove inset to prevent browser auto-generation
-                  chatWindow.style.setProperty("inset", "unset", "important");
-                  chatWindow.style.removeProperty("inset");
-                  chatWindow.style.setProperty("top", "0", "important");
-                  chatWindow.style.setProperty("left", "0", "important");
-                  chatWindow.style.setProperty("right", "0", "important");
-                  chatWindow.style.setProperty("bottom", "0", "important");
-                  chatWindow.style.setProperty("width", "100vw", "important");
-                  chatWindow.style.setProperty("height", `${dynamicHeight}px`, "important");
-                }
-              } else {
-                // Fallback for browsers without visualViewport support
-                const dynamicHeight = getDynamicViewportHeight();
-                chatWindow.style.setProperty("top", "0", "important");
-                chatWindow.style.setProperty("height", `${dynamicHeight}px`, "important");
-                chatWindow.style.setProperty("bottom", "0", "important");
-              }
+              updateViewportHeightVar();
+              chatWindow.style.setProperty("position", "fixed", "important");
+              chatWindow.style.setProperty("inset", "unset", "important");
+              chatWindow.style.removeProperty("inset");
+              chatWindow.style.removeProperty("top");
+              chatWindow.style.setProperty("bottom", "0", "important");
+              chatWindow.style.setProperty("left", "0", "important");
+              chatWindow.style.setProperty("right", "0", "important");
+              chatWindow.style.setProperty("width", "100vw", "important");
+              chatWindow.style.setProperty("height", "var(--vh, 100dvh)", "important");
+              chatWindow.style.setProperty("max-height", "var(--vh, 100dvh)", "important");
+              chatWindow.style.setProperty("padding-bottom", "0", "important");
+              chatWindow.style.setProperty("margin-bottom", "0", "important");
             };
             
             chatWindow.style.setProperty("position", "fixed", "important");
-            // Remove inset to prevent gap - browser auto-generates it from top/left/right/bottom
             chatWindow.style.setProperty("inset", "unset", "important");
             chatWindow.style.removeProperty("inset");
-            chatWindow.style.setProperty("top", "0", "important");
+            chatWindow.style.removeProperty("top");
+            chatWindow.style.setProperty("bottom", "0", "important");
             chatWindow.style.setProperty("left", "0", "important");
             chatWindow.style.setProperty("right", "0", "important");
             chatWindow.style.setProperty("width", "100vw", "important");
             chatWindow.style.setProperty("max-width", "none", "important");
-            chatWindow.style.setProperty("max-height", "none", "important");
+            chatWindow.style.setProperty("height", "var(--vh, 100dvh)", "important");
+            chatWindow.style.setProperty("max-height", "var(--vh, 100dvh)", "important");
             chatWindow.style.setProperty("border-radius", "0", "important");
             chatWindow.style.setProperty("padding", "0", "important");
             chatWindow.style.setProperty("margin", "0", "important");
@@ -1081,6 +1258,7 @@
           bubble.classList.add("chat-open");
           // iOS fix: Also set display none explicitly to ensure bubble is hidden
           bubble.style.display = "none";
+          notifyParentActive();
         } else {
           // Check if device is mobile (max-width: 767px)
           const isMobile = checkIsMobile();
@@ -1124,28 +1302,28 @@
               let backgroundImagePath;
               switch(themeName) {
                 case 'green':
-                  backgroundImagePath = "url('assets/main-bg.png')";
+                  backgroundImagePath = "url('" + getAssetPath("main-bg.png") + "')";
                   break;
                 case 'red':
-                  backgroundImagePath = "url('assets/main-red-bg.png')";
+                  backgroundImagePath = "url('" + getAssetPath("main-red-bg.png") + "')";
                   break;
                 case 'blue':
-                  backgroundImagePath = "url('assets/main-blue-bg.png')";
+                  backgroundImagePath = "url('" + getAssetPath("main-blue-bg.png") + "')";
                   break;
                 case 'yellow':
-                  backgroundImagePath = "url('assets/main-yellow-bg.png')";
+                  backgroundImagePath = "url('" + getAssetPath("main-yellow-bg.png") + "')";
                   break;
                 case 'cyan':
-                  backgroundImagePath = "url('assets/main-cyan-bg.png')";
+                  backgroundImagePath = "url('" + getAssetPath("main-cyan-bg.png") + "')";
                   break;
                 case 'black':
-                  backgroundImagePath = "url('assets/main-black-bg.png')";
+                  backgroundImagePath = "url('" + getAssetPath("main-black-bg.png") + "')";
                   break;
                 case 'white':
-                  backgroundImagePath = "url('assets/main-white-bg.png')";
+                  backgroundImagePath = "url('" + getAssetPath("main-white-bg.png") + "')";
                   break;
                 default:
-                  backgroundImagePath = "url('assets/main-bg.png')";
+                  backgroundImagePath = "url('" + getAssetPath("main-bg.png") + "')";
                   break;
               }
               fugahBody.style.removeProperty("background-image");
@@ -1244,6 +1422,7 @@
           
           // Stop timestamp updates when chat is closed
           stopTimestampUpdates();
+          notifyParentInactive();
         }
       };
 
@@ -1279,6 +1458,15 @@
         console.log('Chat bubble clicked, window width:', window.innerWidth);
         toggleChat();
       });
+
+      if (IS_FUGAH_IFRAME_EMBED) {
+        bubble.addEventListener("mouseenter", () => {
+          notifyParentActive();
+        });
+        bubble.addEventListener("mouseleave", () => {
+          if (!isOpen) notifyParentInactive();
+        });
+      }
 
       // Close chat from header close button (and message-list close – same class .close-button)
       const closeButtons = shadow.querySelectorAll(".close-button");
@@ -1593,18 +1781,36 @@
           if (customPlaceholder) {
             customPlaceholder.style.display = "none";
           }
-          
+          // iOS/Salla: Force 16px to prevent zoom on focus
+          phoneInput.style.setProperty("font-size", "16px", "important");
+          // Salla: Try to prevent page zoom via viewport meta
+          try {
+            const meta = document.querySelector('meta[name="viewport"]');
+            if (meta && meta.content && !/maximum-scale=1/.test(meta.content)) {
+              const c = meta.content.replace(/maximum-scale=[^,\s]*/gi, "").replace(/,+/g, ",").replace(/^,|,$/g, "");
+              meta.content = (c ? c + "," : "") + "maximum-scale=1";
+            }
+          } catch (_) {}
           // ========================================
           // iOS-SPECIFIC: Hide footer when phone input is focused (keyboard opens)
           // ========================================
           const isIOS = checkIsIOS();
-          if (isIOS && checkIsMobile()) {
+          if (isIOS && (checkIsMobile() || checkIsTablet())) {
             const fugahFooter = shadow.querySelector("#fugah-footer");
-            // Hide footer completely so user can see what they type
             if (fugahFooter) {
               fugahFooter.style.setProperty("display", "none", "important");
             }
           }
+          // IMMEDIATE + REPEATED: Update viewport for Salla keyboard
+          const runUpdates = () => {
+            updateViewportHeightVar();
+            if (mobileHeightUpdateHandler) mobileHeightUpdateHandler();
+          };
+          runUpdates();
+          [50, 150, 300, 500].forEach((ms) => setTimeout(runUpdates, ms));
+          requestAnimationFrame(() => {
+            if (phoneInput) phoneInput.scrollIntoView({ block: "nearest", behavior: "auto" });
+          });
         });
         
         // ========================================
@@ -1616,7 +1822,7 @@
           updatePlaceholderVisibility();
           
           const isIOS = checkIsIOS();
-          if (isIOS && checkIsMobile()) {
+          if (isIOS && (checkIsMobile() || checkIsTablet())) {
             // Small delay to ensure keyboard is fully closed
             setTimeout(() => {
               const fugahFooter = shadow.querySelector("#fugah-footer");
@@ -1723,6 +1929,9 @@
             const isNotInvalid = !phoneInput.classList.contains("invalid");
             
             if (isValidLength && isValidPattern && isNotInvalid) {
+              // Persist current customer phone (digits only) for backend calls
+              currentCustomerPhone = phoneNumber;
+
               // Phone number is valid, open chat detail directly (individual chat screen)
               // Clear phone input when leaving home screen
               if (phoneInput) {
@@ -1893,6 +2102,9 @@
             const isNotInvalid = !phoneInput.classList.contains("invalid");
             
             if (isValidLength && isValidPattern && isNotInvalid) {
+              // Persist current customer phone (digits only) for backend calls
+              currentCustomerPhone = phoneNumber;
+
               // Phone number is valid, open chat detail directly (individual chat screen)
               // Clear phone input when leaving home screen
               if (phoneInput) {
@@ -2129,6 +2341,10 @@
           goBackToMessageList();
           // Check and update empty state
           checkAndUpdateEmptyState();
+          // Load conversation history for this customer (if phone known)
+          if (currentCustomerPhone) {
+            loadConversationHistory();
+          }
         }
       }
 
@@ -2157,6 +2373,11 @@
           phoneInput.classList.remove("valid", "invalid");
         }
         
+        // Track current conversation for backend calls
+        if (messageId) {
+          currentConversationId = messageId;
+        }
+
         // Hide message list container
         if (mainMessageContainer) mainMessageContainer.style.display = "none";
         // Show message detail container
@@ -2173,11 +2394,17 @@
           updateLastMessageTimestamp();
         }
         
-        // Scroll to bottom of messages
-        if (messageDetailMessages) {
-          setTimeout(() => {
-            messageDetailMessages.scrollTop = messageDetailMessages.scrollHeight;
-          }, 100);
+        // Load messages for this conversation from backend
+        const phone = getEffectivePhone();
+        if (phone && currentConversationId) {
+          loadConversationMessages(phone, currentConversationId);
+        } else {
+          // Scroll to bottom of existing messages
+          if (messageDetailMessages) {
+            setTimeout(() => {
+              messageDetailMessages.scrollTop = messageDetailMessages.scrollHeight;
+            }, 100);
+          }
         }
       }
 
@@ -2447,6 +2674,49 @@
       }
 
 
+      // Helper to get the current customer's phone number (digits only)
+      function getEffectivePhone() {
+        if (currentCustomerPhone) return currentCustomerPhone;
+        if (!phoneInput) return null;
+        const digits = phoneInput.value.trim().replace(/\D/g, "");
+        return digits || null;
+      }
+
+      // Helper to call the Supabase chatbot API with common settings
+      function postToChatbotApi(body) {
+        if (!API_URL || !storeId) {
+          return Promise.reject(new Error("Missing API_URL or storeId"));
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+        const fullBody = Object.assign({ storeId }, body || {});
+
+        return fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(fullBody),
+          signal: controller.signal
+        })
+        .then(async (res) => {
+          const text = await res.text();
+          clearTimeout(timeoutId);
+          let data = {};
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch (e) {
+            // Non-JSON response; keep data as empty object
+          }
+          return { res, data };
+        })
+        .catch((err) => {
+          clearTimeout(timeoutId);
+          throw err;
+        });
+      }
+
+
       // Function to update the last message timestamp
       function updateLastMessageTimestamp() {
         if (!messageDetailMessages) return;
@@ -2578,7 +2848,7 @@
       // MESSAGE SENDING FUNCTIONALITY
       // ========================================
       // Handle sending messages in detail chat with validation and bot responses
-      function sendDetailMessage() {
+      async function sendDetailMessage() {
         if (!messageDetailInput || !messageDetailSendBtn) return;
         
         // Don't send if button is inactive
@@ -2642,15 +2912,43 @@
             addDetailMessageWithFile("شكراً لك! تم استلام الملف.", blobUrl, fileType, file.name, false, true);
           }, 1500);
         } else {
+          // Text-only message: send to Supabase chatbot API (phone required for storage)
+          const phone = getEffectivePhone();
+          if (!phone) {
+            addDetailMessage("الرجاء إدخال رقم الهاتف أولاً من الصفحة الرئيسية.", false, true);
+            return;
+          }
+
           addDetailMessage(message, true, false);
           messageDetailInput.value = "";
           if (typeof hideFilePreview === "function") hideFilePreview();
           autoResizeTextarea();
           toggleMessageDetailSendButtonState();
+
           showLoadingIndicator();
-          setTimeout(() => {
-            addDetailMessage("شكراً لك! سأقوم بالرد عليك قريباً.", false, true);
-          }, 1500);
+
+          try {
+            const { data } = await postToChatbotApi({
+              message,
+              phone: phone || undefined,
+              conversationId: currentConversationId || undefined
+            });
+
+            if (data && (data.conversationId || data.conversation_id)) {
+              currentConversationId = data.conversationId || data.conversation_id;
+            }
+
+            const replyText =
+              (data && (data.message || data.reply || data.response)) ||
+              "شكراً لك! سأقوم بالرد عليك قريباً.";
+
+            removeLoadingIndicator();
+            addDetailMessage(replyText, false, true);
+          } catch (error) {
+            console.error("Chatbot API error:", error);
+            removeLoadingIndicator();
+            addDetailMessage("عذراً، حدث خطأ مؤقت. حاول مرة أخرى بعد قليل.", false, true);
+          }
         }
       }
 
@@ -3640,29 +3938,40 @@
           autoResizeTextarea();
         });
 
-        // Trigger height update when input is focused (keyboard opens) - fixes first-time gap
+        // Trigger height update when input is focused (keyboard opens) - fixes first-time gap + Salla zoom
         messageDetailInput.addEventListener("focus", () => {
+          // iOS/Salla: Force 16px on focus so page never zooms
+          messageDetailInput.style.setProperty("font-size", "16px", "important");
+          // Salla: Try to prevent page zoom via viewport meta (iOS zooms if input < 16px or viewport allows)
+          try {
+            const meta = document.querySelector('meta[name="viewport"]');
+            if (meta && meta.content && !/maximum-scale=1/.test(meta.content)) {
+              const c = meta.content.replace(/maximum-scale=[^,\s]*/gi, "").replace(/,+/g, ",").replace(/^,|,$/g, "");
+              meta.content = (c ? c + "," : "") + "maximum-scale=1";
+            }
+          } catch (_) {}
           // ========================================
           // iOS-SPECIFIC: Hide footer when input is focused (keyboard opens)
           // ========================================
           const isIOS = checkIsIOS();
-          if (isIOS && checkIsMobile()) {
+          if (isIOS && (checkIsMobile() || checkIsTablet())) {
             const fugahFooter = shadow.querySelector("#fugah-footer");
-            // Hide footer completely so only input container is visible
             if (fugahFooter) {
               fugahFooter.style.setProperty("display", "none", "important");
             }
           }
-          
-          // Trigger viewport update after keyboard animation completes
-          if (mobileHeightUpdateHandler) {
-            // Wait for keyboard to fully open before updating
-            // iOS needs slightly longer delay
-            const delay = isIOS ? 500 : 450;
-            setTimeout(() => {
-              mobileHeightUpdateHandler();
-            }, delay);
-          }
+          // IMMEDIATE + REPEATED: Update viewport (Salla keyboard can animate slowly)
+          const runUpdates = () => {
+            updateViewportHeightVar();
+            if (mobileHeightUpdateHandler) mobileHeightUpdateHandler();
+          };
+          runUpdates();
+          [50, 150, 300, 500].forEach((ms) => setTimeout(runUpdates, ms));
+          requestAnimationFrame(() => {
+            if (messageDetailInput) {
+              messageDetailInput.scrollIntoView({ block: "nearest", behavior: "auto" });
+            }
+          });
         });
         
         // ========================================
@@ -3670,7 +3979,7 @@
         // ========================================
         messageDetailInput.addEventListener("blur", () => {
           const isIOS = checkIsIOS();
-          if (isIOS && checkIsMobile()) {
+          if (isIOS && (checkIsMobile() || checkIsTablet())) {
             // Small delay to ensure keyboard is fully closed
             setTimeout(() => {
               const fugahFooter = shadow.querySelector("#fugah-footer");
@@ -3745,6 +4054,122 @@
         } else {
           noMessagesEmptyState.style.display = "flex";
         }
+      }
+
+      // Load conversation history from backend into the message list
+      function loadConversationHistory() {
+        if (!messageContainer) return;
+
+        const phone = getEffectivePhone();
+        if (!phone) return;
+
+        // Optional: clear existing items before loading
+        const existingItems = messageContainer.querySelectorAll(".message-item");
+        existingItems.forEach(item => item.remove());
+
+        // Keep empty state visible until we know if there are conversations
+        checkAndUpdateEmptyState();
+
+        postToChatbotApi({
+          action: "get_history",
+          phone
+        })
+        .then(({ data }) => {
+          const conversations = Array.isArray(data && data.conversations)
+            ? data.conversations
+            : [];
+
+          conversations.forEach((conv) => {
+            const convId = conv.id || conv.conversationId || conv.conversation_id;
+            if (!convId) return;
+
+            const lastMessage =
+              conv.last_message ||
+              conv.lastMessage ||
+              conv.preview ||
+              conv.summary ||
+              "محادثة بدون عنوان";
+
+            const createdAt =
+              conv.created_at ||
+              conv.createdAt ||
+              conv.last_message_at ||
+              conv.updated_at ||
+              null;
+
+            const item = document.createElement("div");
+            item.className = "message-item";
+            item.setAttribute("data-message-id", String(convId));
+
+            const content = document.createElement("div");
+            content.className = "message-item-content";
+
+            const title = document.createElement("p");
+            title.className = "message-item-title";
+            title.textContent = lastMessage;
+
+            content.appendChild(title);
+
+            if (createdAt) {
+              const meta = document.createElement("p");
+              meta.className = "message-item-meta";
+              meta.textContent = createdAt;
+              content.appendChild(meta);
+            }
+
+            item.appendChild(content);
+            messageContainer.appendChild(item);
+          });
+
+          attachMessageItemHandlers();
+          checkAndUpdateEmptyState();
+        })
+        .catch((err) => {
+          console.error("Failed to load conversation history:", err);
+        });
+      }
+
+      // Load messages for a specific conversation into the detail view
+      function loadConversationMessages(phone, conversationId) {
+        if (!messageDetailMessages) return;
+
+        // Clear current messages before loading
+        messageDetailMessages.innerHTML = "";
+
+        postToChatbotApi({
+          action: "get_messages",
+          phone,
+          conversationId
+        })
+        .then(({ data }) => {
+          const messages = Array.isArray(data && data.messages)
+            ? data.messages
+            : [];
+
+          messages.forEach((msg) => {
+            const isUser =
+              msg.sender === "user" ||
+              msg.sender === "customer" ||
+              msg.role === "user";
+
+            const text =
+              msg.text ||
+              msg.message ||
+              msg.content ||
+              "";
+
+            if (!text) return;
+            addDetailMessage(text, isUser, !isUser);
+          });
+
+          // Ensure we scroll to bottom after loading
+          setTimeout(() => {
+            messageDetailMessages.scrollTop = messageDetailMessages.scrollHeight;
+          }, 50);
+        })
+        .catch((err) => {
+          console.error("Failed to load conversation messages:", err);
+        });
       }
       
       // Handle navigation back to message list from detail view
@@ -3989,6 +4414,22 @@
             emoji.classList.add("selected");
             emoji.src = activeSrc;
             selectedRating = rating;
+
+            // Send rating to backend when user selects an emoji
+            const phone = getEffectivePhone();
+            if (!phone || !currentConversationId) return;
+
+            const ratingValue = Number(selectedRating || rating);
+            if (!ratingValue || ratingValue < 1 || ratingValue > 5) return;
+
+            postToChatbotApi({
+              message: `rating:${ratingValue}`,
+              phone,
+              conversationId: currentConversationId
+            })
+            .catch((err) => {
+              console.error("Failed to submit rating:", err);
+            });
           });
         });
       }
@@ -4166,8 +4607,24 @@
           
           // Show custom confirmation message before creating ticket
           showCustomConfirmation("هل أنت متأكد من رفع تذكرة؟", () => {
-            // Show rating screen after confirmation
-            showRatingScreen();
+            const phone = getEffectivePhone();
+            if (phone && currentConversationId) {
+              postToChatbotApi({
+                message: "ticket_request",
+                phone,
+                conversationId: currentConversationId
+              })
+              .catch((err) => {
+                console.error("Failed to create ticket:", err);
+              })
+              .finally(() => {
+                // Show rating screen after confirmation
+                showRatingScreen();
+              });
+            } else {
+              // If we don't have enough info for backend, still show rating screen
+              showRatingScreen();
+            }
           });
         });
         
@@ -4178,8 +4635,22 @@
           
           // Show custom confirmation message before creating ticket
           showCustomConfirmation("هل أنت متأكد من رفع تذكرة؟", () => {
-            // Show rating screen after confirmation
-            showRatingScreen();
+            const phone = getEffectivePhone();
+            if (phone && currentConversationId) {
+              postToChatbotApi({
+                message: "ticket_request",
+                phone,
+                conversationId: currentConversationId
+              })
+              .catch((err) => {
+                console.error("Failed to create ticket:", err);
+              })
+              .finally(() => {
+                showRatingScreen();
+              });
+            } else {
+              showRatingScreen();
+            }
           });
         });
       }
@@ -4218,16 +4689,24 @@
       // MESSAGE ITEM CLICK HANDLERS FUNCTIONALITY
       // ========================================
       // Add click handlers to message items for opening detail view
-      messageItems.forEach(item => {
-        item.addEventListener("click", () => {
-          const messageId = item.getAttribute("data-message-id");
-          if (messageId) {
-            openMessageDetail(messageId);
-          }
+      function attachMessageItemHandlers() {
+        if (!messageContainer) return;
+        const items = messageContainer.querySelectorAll(".message-item");
+        items.forEach(item => {
+          if (item.dataset.clickBound === "1") return;
+          item.dataset.clickBound = "1";
+          item.style.cursor = "pointer";
+          item.addEventListener("click", () => {
+            const messageId = item.getAttribute("data-message-id");
+            if (messageId) {
+              openMessageDetail(messageId);
+            }
+          });
         });
-        // Make message items look clickable
-        item.style.cursor = "pointer";
-      });
+      }
+
+      // Attach handlers for any initial static items
+      attachMessageItemHandlers();
 
 
       // ========================================
@@ -4301,29 +4780,28 @@
           let backgroundImagePath;
           switch(themeName) {
             case 'green':
-              // Use main-bg.png for green theme as specified
-              backgroundImagePath = "url('assets/main-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-bg.png") + "')";
               break;
             case 'red':
-              backgroundImagePath = "url('assets/main-red-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-red-bg.png") + "')";
               break;
             case 'blue':
-              backgroundImagePath = "url('assets/main-blue-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-blue-bg.png") + "')";
               break;
             case 'yellow':
-              backgroundImagePath = "url('assets/main-yellow-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-yellow-bg.png") + "')";
               break;
             case 'cyan':
-              backgroundImagePath = "url('assets/main-cyan-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-cyan-bg.png") + "')";
               break;
             case 'black':
-              backgroundImagePath = "url('assets/main-black-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-black-bg.png") + "')";
               break;
             case 'white':
-              backgroundImagePath = "url('assets/main-white-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-white-bg.png") + "')";
               break;
             default:
-              backgroundImagePath = "url('assets/main-bg.png')";
+              backgroundImagePath = "url('" + getAssetPath("main-bg.png") + "')";
               break;
           }
           // Only set background image if chat is not open OR if not mobile (on tablet/desktop, keep background even when chat is open)
@@ -4662,6 +5140,13 @@
       // ========================================
       // Expose theme changing function globally for external access
       window.changeChatbotTheme = changeTheme;
+      applyRemoteConfig = () => {
+        if (remoteWidgetConfig && remoteWidgetConfig.theme) {
+          changeTheme(remoteWidgetConfig.theme);
+        }
+        applyWidgetPosition();
+      };
+      applyRemoteConfig();
 
 
       // ========================================
@@ -4672,15 +5157,12 @@
       // ========================================
       // INITIAL THEME SETUP FUNCTIONALITY
       // ========================================
-      // Set initial theme if specified in script tag data attribute
-      const scriptTag = document.querySelector('script[data-theme]');
-      if (scriptTag) {
-        const initialTheme = scriptTag.getAttribute('data-theme');
-        if (initialTheme) {
-          setTimeout(() => {
-            changeTheme(initialTheme);
-          }, 100);
-        }
+      // Use our widget script tag (not querySelector) so we don't pick up another app's data-theme on Salla
+      const initialTheme = remoteWidgetConfig.theme || scriptTheme;
+      if (initialTheme) {
+        setTimeout(() => {
+          changeTheme(initialTheme);
+        }, 100);
       }
 
 

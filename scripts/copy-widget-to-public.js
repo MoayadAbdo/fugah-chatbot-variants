@@ -5,6 +5,15 @@ const testDir = path.join(__dirname, "..", "test");
 const publicDir = path.join(testDir, "public");
 
 fs.mkdirSync(publicDir, { recursive: true });
+
+const embedDir = path.join(__dirname, "..", "embed");
+["widget-loader.js", "widget-frame.html"].forEach((name) => {
+  const from = path.join(embedDir, name);
+  if (fs.existsSync(from)) {
+    fs.copyFileSync(from, path.join(publicDir, name));
+  }
+});
+
 fs.copyFileSync(path.join(testDir, "widget.js"), path.join(publicDir, "widget.js"));
 fs.copyFileSync(path.join(testDir, "widget.css"), path.join(publicDir, "widget.css"));
 fs.copyFileSync(path.join(testDir, "ui.html"), path.join(publicDir, "ui.html"));

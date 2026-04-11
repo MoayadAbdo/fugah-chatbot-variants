@@ -1,19 +1,12 @@
 <!-- =============================================
-     Fugah Chatbot Widget - Salla Partner App
-     Embed snippet for merchant stores
-     =============================================
-     Usage:
-     1. Host widget files on your CDN at the same base URL (e.g. https://cdn.yourdomain.com/widget/v1/)
-        Required files: widget.js, widget.css, ui.html, and assets/* (all under that base URL).
-     2. Replace YOUR_CDN_BASE_URL below with that base URL (no trailing slash).
-     3. Add this snippet in Salla Partner Portal → Your App → App Snippets.
-     4. Use data-store-id from your app (e.g. from OAuth/store context) so each merchant gets their ID.
+     Fugah Chatbot — Salla Partner App (iframe loader)
+     Replace YOUR_VERCEL_DOMAIN with your deployment URL (no trailing slash).
+     Use your Salla store id variable for data-store-id (e.g. {{store_id}}).
+     Partner Portal → Your App → App Snippets → paste the script below.
      ============================================= -->
 
 <script
-  src="https://YOUR_CDN_BASE_URL/widget.js"
+  src="https://YOUR_VERCEL_DOMAIN/widget-loader.js"
   charset="UTF-8"
-  data-store-id="{{store_id}}"
-  data-theme="yellow"
-  data-position="bottom-right">
+  data-store-id="{{store_id}}">
 </script>
